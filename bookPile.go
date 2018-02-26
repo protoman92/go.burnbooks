@@ -12,17 +12,21 @@ type BookPile interface {
 // BookPileParams represents the required parameters to build a BookPile.
 type BookPileParams struct {
 	books []Burnable
+	id    string
 }
 
 // FBookPile represents a pile of Books with all functionalities.
 type FBookPile interface {
 	BookPile
 	Available() <-chan interface{}
+	TakeResult() <-chan *BookTakeResult
 }
 
 type bookPile struct {
-	available chan interface{}
-	books     chan Burnable
+	available  chan interface{}
+	books      chan Burnable
+	id         string
+	takeResult chan *BookTakeResult
 }
 
 func (bp *bookPile) Available() <-chan interface{} {
@@ -74,10 +78,30 @@ func (bp *bookPile) Supply(taker BookTaker) {
 					taker.LoadBooks() <- loaded
 				}()
 
+				bookIds := make([]string, len(loaded))
+
+				for ix, book := range loaded {
+					bookIds[ix] = book.UID()
+				}
+
+				result := &BookTakeResult{
+					bookIds: bookIds,
+					pileID:  bp.id,
+					takerID: taker.UID(),
+				}
+
+				go func() {
+					bp.takeResult <- result
+				}()
+
 				return
 			}
 		}
 	}()
+}
+
+func (bp *bookPile) TakeResult() <-chan *BookTakeResult {
+	return bp.takeResult
 }
 
 // NewBookPile creates a new BookPile.
@@ -89,7 +113,11 @@ func NewBookPile(params *BookPileParams) FBookPile {
 		bookCh <- book
 	}
 
-	pile := &bookPile{available: make(chan interface{}), books: bookCh}
+	pile := &bookPile{
+		available:  make(chan interface{}),
+		books:      bookCh,
+		takeResult: make(chan *BookTakeResult),
+	}
 
 	go func() {
 		pile.available <- true

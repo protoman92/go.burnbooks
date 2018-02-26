@@ -21,9 +21,9 @@ type IncineratorParams struct {
 // FIncinerator represents an incinerator that has all functionalities, such
 // as signalling availability.
 type FIncinerator interface {
-	BurnResultCollector
 	Incinerator
 	Availability() <-chan chan<- []Burnable
+	BurnResult() <-chan *BurnResult
 	UID() string
 }
 

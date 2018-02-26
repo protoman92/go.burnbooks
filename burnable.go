@@ -12,13 +12,6 @@ type Burnable interface {
 	Burn()
 }
 
-// BurnResultCollector collects burn results.
-type BurnResultCollector interface {
-
-	// Every time a Burnable is burned, put it here.
-	BurnResult() <-chan *BurnResult
-}
-
 // BurnResult represents the result of a burning.
 type BurnResult struct {
 	incineratorID string

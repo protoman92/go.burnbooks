@@ -27,8 +27,8 @@ func newRandomBookPile(count int, offset int) FBookPile {
 func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 	// Setup
 	t.Parallel()
-	pileCount, bookCount := 10, 10
-	totalBookCount := pileCount * bookCount
+	pileCount, bookCount := 10, 10000
+	totalBCount := pileCount * bookCount
 	bookPiles := make([]FBookPile, pileCount)
 
 	for ix := range bookPiles {
@@ -37,8 +37,7 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 	}
 
 	pileGroup := NewBookPileGroup(bookPiles...)
-
-	takerCount := 100
+	takerCount := 50
 	bookTakers := make([]BookTaker, takerCount)
 	bookChs := make([]chan []Burnable, takerCount)
 
@@ -47,8 +46,9 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 
 		btParams := &BookTakerParams{
 			capacity:  17,
+			id:        strconv.Itoa(ix),
 			loadBooks: loadBookCh,
-			timeout:   1e9,
+			timeout:   0.5e9,
 		}
 
 		bookTaker := NewBookTaker(btParams)
@@ -99,10 +99,32 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 	time.Sleep(2e9)
 
 	// Then
+	allTakenResult := pileGroup.Taken()
+	allTakenMap := make(map[string]int, 0)
+	allTakenCount := 0
+
+	for _, result := range allTakenResult {
+		takenCount := len(result.bookIds)
+		allTakenMap[result.takerID] = allTakenMap[result.takerID] + takenCount
+		allTakenCount += takenCount
+	}
+
+	if allTakenCount != totalBCount {
+		t.Errorf("Should have taken %d, but got %d", totalBCount, allTakenCount)
+	}
+
+	for key, value := range allTakenMap {
+		t.Logf("Book taker %s took %d books", key, value)
+
+		if value == 0 {
+			t.Errorf("%s should have taken some, but took nothing", key)
+		}
+	}
+
 	loadedLen := len(loadedBooks)
 
-	if loadedLen != totalBookCount {
-		t.Errorf("Should have taken %d, instead got %d", totalBookCount, loadedLen)
+	if loadedLen != totalBCount {
+		t.Errorf("Should have taken %d, instead got %d", totalBCount, loadedLen)
 	}
 
 	keys := make([]int, 0)
@@ -112,14 +134,14 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 		keys = append(keys, numericKey)
 
 		if value != 1 {
-			t.Errorf("%v should have been taken once, but instead was %d", key, value)
+			t.Errorf("%v should have been taken once, but was %d", key, value)
 		}
 	}
 
 	sort.Ints(keys)
 	keyLen := len(keys)
 
-	if keyLen != totalBookCount {
-		t.Errorf("Should have %d keys, instead got %d", totalBookCount, keyLen)
+	if keyLen != totalBCount {
+		t.Errorf("Should have %d keys, instead got %d", totalBCount, keyLen)
 	}
 }

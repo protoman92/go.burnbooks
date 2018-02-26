@@ -58,7 +58,7 @@ func Test_BurnMultiple_ShouldEventuallyBurnAll(t *testing.T) {
 	length := len(ig.Burned())
 
 	if length != totalBurned {
-		t.Errorf("Should have burned %d, but instead got %d", totalBurned, length)
+		t.Errorf("Should have burned %d, but got %d", totalBurned, length)
 	}
 }
 
@@ -91,7 +91,7 @@ func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 	length := len(ig.Burned())
 
 	if length != 0 {
-		t.Errorf("Should not have burned anything, but instead got %d", length)
+		t.Errorf("Should not have burned anything, but got %d", length)
 	}
 }
 
@@ -163,20 +163,20 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 	}
 
 	if i1Count != 0 {
-		t.Errorf("i1 should not have burned anything, but instead got %d", i1Count)
+		t.Errorf("i1 should not have burned anything, but got %d", i1Count)
 	}
 
 	for key, value := range otherBurned {
 		t.Logf("Incinerator %s burned %d", key, value)
 
 		if value == 0 {
-			t.Errorf("%s should have burned something, but instead got nothing", key)
+			t.Errorf("%s should have burned something, but got nothing", key)
 		}
 	}
 
 	if oCount != totalBurned {
 		t.Errorf(
-			"Other incinerators should have burned %d, but instead got %d",
+			"Other incinerators should have burned %d, but got %d",
 			burnRounds,
 			oCount,
 		)
