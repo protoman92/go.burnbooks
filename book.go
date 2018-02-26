@@ -14,10 +14,6 @@ type book struct {
 	BookParams
 }
 
-func (b *book) String() string {
-	return b.UID
-}
-
 func (b *book) Burn() {
 	// fmt.Printf("Burning %v\n", b)
 	time.Sleep(b.BurnDuration)

@@ -7,17 +7,40 @@ import (
 )
 
 const (
-	capacity        = 500
-	count           = 10000
+	burnableCount   = 5
+	burnRounds      = 2000
+	capacity        = 100
 	defaultDuration = 1e7
 	minCapacity     = capacity / 2
-	waitDuration    = 1e9
+	totalBurned     = burnableCount * burnRounds
+	waitDuration    = 2e9
 )
+
+func incinerate(ig IncineratorGroup) {
+	for i := 0; i < burnRounds; i++ {
+		go func(ix int) {
+			burnables := make([]Burnable, burnableCount)
+
+			for ix := range burnables {
+				bParams := BookParams{
+					BurnDuration: defaultDuration,
+					UID:          strconv.Itoa(ix),
+				}
+
+				burnable := NewBook(bParams)
+				burnables[ix] = burnable
+			}
+
+			ig.Incinerate(burnables...)
+		}(i)
+	}
+
+	time.Sleep(waitDuration)
+}
 
 func Test_BurnMultiple_ShouldEventuallyBurnAll(t *testing.T) {
 	/// Setup
 	t.Parallel()
-	pending := make(chan Burnable, capacity)
 
 	iParams := IncineratorParams{
 		Capacity:    capacity,
@@ -25,32 +48,23 @@ func Test_BurnMultiple_ShouldEventuallyBurnAll(t *testing.T) {
 		UID:         "1",
 	}
 
-	incinerator := NewIncinerator(iParams, pending)
+	incinerator := NewIncinerator(iParams)
 	ig := NewIncineratorGroup(incinerator)
 
 	/// When
-	for i := 0; i < count; i++ {
-		go func(ix int) {
-			bParams := BookParams{BurnDuration: defaultDuration, UID: strconv.Itoa(ix)}
-			burnable := NewBook(bParams)
-			ig.Incinerate(burnable)
-		}(i)
-	}
-
-	time.Sleep(waitDuration)
+	incinerate(ig)
 
 	/// Then
 	length := len(ig.Burned())
 
-	if length != count {
-		t.Errorf("Should have burned %d, but instead got %d", count, length)
+	if length != totalBurned {
+		t.Errorf("Should have burned %d, but instead got %d", totalBurned, length)
 	}
 }
 
 func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 	/// Setup
 	t.Parallel()
-	pending := make(chan Burnable, capacity*1000)
 
 	iParams := IncineratorParams{
 		Capacity:    capacity,
@@ -58,11 +72,11 @@ func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 		UID:         "1",
 	}
 
-	incinerator := NewIncinerator(iParams, pending)
+	incinerator := NewIncinerator(iParams)
 	ig := NewIncineratorGroup(incinerator)
 
 	/// When
-	for i := 0; i < count; i++ {
+	for i := 0; i < burnRounds; i++ {
 		go func(ix int) {
 			// Unrealistic burn duration to simulate blocking operation.
 			bParams := BookParams{BurnDuration: 1e15, UID: strconv.Itoa(ix)}
@@ -97,11 +111,11 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 			UID:         id,
 		}
 
-		otherIncs[ix] = NewIncinerator(iParams, make(chan Burnable, capacity))
+		otherIncs[ix] = NewIncinerator(iParams)
 	}
 
 	i1Params := IncineratorParams{UID: id1}
-	i1 := NewIncinerator(i1Params, make(chan Burnable, capacity))
+	i1 := NewIncinerator(i1Params)
 	foreverID := "Forever"
 
 	// For the purpose of this test, this might as well be forever. Normally we
@@ -113,28 +127,22 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 
 	// Take out availability to prevent new Burnables from being added to pending
 	// pile.
-	<-i1.SignalAvailable()
+	<-i1.Availability()
 
 	allIncs := append(otherIncs, i1)
 	ig := NewIncineratorGroup(allIncs...)
 
 	/// When
-	for i := 0; i < count; i++ {
-		go func(ix int) {
-			bParams := BookParams{BurnDuration: defaultDuration, UID: strconv.Itoa(ix)}
-			burnable := NewBook(bParams)
-			ig.Incinerate(burnable)
-		}(i)
-	}
-
-	time.Sleep(waitDuration)
+	incinerate(ig)
 
 	/// Then
 	allBurned := ig.Burned()
 	var i1Count, oCount int
+	burnedSet := make(map[Burnable]bool, 0)
 	otherBurned := make(map[string]int, 0)
 
 	for _, burned := range allBurned {
+		burnedSet[burned.burned] = true
 		incineratorID := burned.incineratorID
 
 		switch incineratorID {
@@ -147,6 +155,7 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 		}
 	}
 
+	allBurnedLen := len(burnedSet)
 	oBurnedLen := len(otherBurned)
 
 	if oBurnedLen != oIncCount {
@@ -165,11 +174,15 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 		}
 	}
 
-	if oCount != count {
+	if oCount != totalBurned {
 		t.Errorf(
 			"Other incinerators should have burned %d, but instead got %d",
-			count,
+			burnRounds,
 			oCount,
 		)
+	}
+
+	if allBurnedLen != totalBurned {
+		t.Errorf("Should have burned %d, instead got %d", totalBurned, allBurnedLen)
 	}
 }

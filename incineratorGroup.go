@@ -7,11 +7,9 @@ type IncineratorGroup interface {
 }
 
 type incineratorGroup struct {
-	availableIncinerators chan chan<- Burnable
+	availableIncinerators chan chan<- []Burnable
 	burned                []*BurnResult
-	burnResult            chan *BurnResult
 	incinerators          []FIncinerator
-	updateBurned          chan *BurnResult
 }
 
 func (ig *incineratorGroup) Burned() []*BurnResult {
@@ -24,25 +22,30 @@ func (ig *incineratorGroup) Incinerate(burnables ...Burnable) {
 	go func() {
 		select {
 		case ch := <-ig.availableIncinerators:
-			for _, burnable := range burnables {
-				ch <- burnable
-			}
+			ch <- burnables
 		}
 	}()
 }
 
 // Loop each incinerator to fetch burned updates.
 func (ig *incineratorGroup) loopBurn() {
+	updateBurned := make(chan *BurnResult)
+
 	for _, i := range ig.incinerators {
 		go func(i FIncinerator) {
+			availability := i.Availability()
+			burnResult := i.BurnResult()
+
 			for {
 				select {
-				case burned := <-i.BurnResult():
-					ig.updateBurned <- burned
-
-				case <-i.SignalAvailable():
+				case burned := <-burnResult:
 					go func() {
-						ig.availableIncinerators <- i.Pending()
+						updateBurned <- burned
+					}()
+
+				case ch := <-availability:
+					go func() {
+						ig.availableIncinerators <- ch
 					}()
 				}
 			}
@@ -52,7 +55,7 @@ func (ig *incineratorGroup) loopBurn() {
 	go func() {
 		for {
 			select {
-			case burned := <-ig.updateBurned:
+			case burned := <-updateBurned:
 				ig.burned = append(ig.burned, burned)
 			}
 		}
@@ -65,11 +68,9 @@ func (ig *incineratorGroup) loopBurn() {
 // incinerators.
 func NewIncineratorGroup(incinerators ...FIncinerator) IncineratorGroup {
 	ig := &incineratorGroup{
-		availableIncinerators: make(chan chan<- Burnable, len(incinerators)),
+		availableIncinerators: make(chan chan<- []Burnable, len(incinerators)),
 		burned:                make([]*BurnResult, 0),
-		burnResult:            make(chan *BurnResult),
 		incinerators:          incinerators,
-		updateBurned:          make(chan *BurnResult),
 	}
 
 	ig.loopBurn()

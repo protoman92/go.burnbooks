@@ -1,7 +1,5 @@
 package goburnbooks
 
-import "fmt"
-
 // Burnable represents something that can burn, e.g. books. In the Burn() method,
 // we may implement variable sleep durations to simulate different burning
 // processes (bigger books burn more slowly).
@@ -24,8 +22,4 @@ type BurnResultCollector interface {
 type BurnResult struct {
 	incineratorID string
 	burned        Burnable
-}
-
-func (br *BurnResult) String() string {
-	return fmt.Sprintf("%v was burned by %s", br.burned, br.incineratorID)
 }

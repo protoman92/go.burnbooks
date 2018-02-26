@@ -22,24 +22,19 @@ type IncineratorParams struct {
 // FIncinerator represents an incinerator that has all functionalities, such
 // as signalling availability.
 type FIncinerator interface {
-	Available
 	BurnResultCollector
 	Incinerator
-	Pending() chan<- Burnable
+	Availability() <-chan chan<- []Burnable
 }
 
 type incinerator struct {
 	IncineratorParams
-	available  chan interface{}
+	available  chan chan<- []Burnable
 	burnResult chan *BurnResult
-	pending    chan Burnable
+	pending    chan []Burnable
 }
 
-func (i *incinerator) String() string {
-	return i.UID
-}
-
-func (i *incinerator) SignalAvailable() <-chan interface{} {
+func (i *incinerator) Availability() <-chan chan<- []Burnable {
 	return i.available
 }
 
@@ -49,54 +44,54 @@ func (i *incinerator) BurnResult() <-chan *BurnResult {
 
 func (i *incinerator) Incinerate(burnables ...Burnable) {
 	go func() {
-		for _, burnable := range burnables {
-			i.pending <- burnable
-		}
+		i.pending <- burnables
 	}()
-}
-
-func (i *incinerator) Pending() chan<- Burnable {
-	return i.pending
 }
 
 func (i *incinerator) loopBurn() {
 	burning := make(chan interface{}, i.Capacity)
-	burningCount := 0
-	updateBurning := make(chan int)
+	availableCount := i.Capacity
+	updateAvailable := make(chan int)
 
 	for {
 		select {
-		case update := <-updateBurning:
-			burningCount += update
+		case update := <-updateAvailable:
+			// We serialize count updates with a channel. Admittedly this is the not
+			// the best approach because sometimes the count can get below 0, but it
+			// works well enough to limit the number of times this incinerator signals
+			// availability.
+			availableCount += update
 
 			// The number of Burnables in pending pile may be way more than spare
 			// capacity, so here we enforce that only when available slots is more
 			// than a minimum do we signal availability.
-			if i.Capacity-burningCount > i.MinCapacity {
+			if availableCount > i.MinCapacity {
 				go func() {
-					i.available <- true
+					i.available <- i.pending
 				}()
 			}
 
-		case burnable := <-i.pending:
-			go func() {
-				// If the incinerator capacity is reached, this should block.
-				burning <- true
+		case burnables := <-i.pending:
+			for _, burnable := range burnables {
+				go func(burnable Burnable) {
+					// If the incinerator capacity is reached, this should block.
+					burning <- true
 
-				// If this statement is not in a goroutine, it will block because it
-				// is not buffered. As a result, we will never reach the update code.
-				updateBurning <- 1
-				burnable.Burn()
+					// If this statement is not in a goroutine, it will block because it
+					// is not buffered. As a result, we will never reach the update code.
+					updateAvailable <- -1
+					burnable.Burn()
 
-				// Release a slot for the next Burnable.
-				<-burning
+					// Release a slot for the next Burnable.
+					<-burning
 
-				// Similar reasoning to above as to why this statement has to be in
-				// a goroutine.
-				updateBurning <- -1
-				result := &BurnResult{incineratorID: i.UID, burned: burnable}
-				i.burnResult <- result
-			}()
+					// Similar reasoning to above as to why this statement has to be in
+					// a goroutine.
+					updateAvailable <- 1
+					result := &BurnResult{incineratorID: i.UID, burned: burnable}
+					i.burnResult <- result
+				}(burnable)
+			}
 		}
 	}
 }
@@ -104,21 +99,16 @@ func (i *incinerator) loopBurn() {
 // NewIncinerator creates a new incinerator with a specified pending channel
 // and capacity. The capacity determines how many Burnables can be burned at any
 // given point in time.
-//
-// The pending channel is provided here because we do not want to impose how
-// many Burnables are allowed to pile up before workers have to wait. For e.g.,
-// there may be a stack of 100 books in front of the incinerator because a
-// worker feels like carrying that many at once.
-func NewIncinerator(params IncineratorParams, pending chan Burnable) FIncinerator {
+func NewIncinerator(params IncineratorParams) FIncinerator {
 	incinerator := &incinerator{
 		IncineratorParams: params,
-		available:         make(chan interface{}),
+		available:         make(chan chan<- []Burnable),
 		burnResult:        make(chan *BurnResult),
-		pending:           pending,
+		pending:           make(chan []Burnable),
 	}
 
 	go func() {
-		incinerator.available <- true
+		incinerator.available <- incinerator.pending
 	}()
 
 	go incinerator.loopBurn()
