@@ -12,16 +12,17 @@ type Burner interface {
 
 // Incinerator represents something that can burn a Burner.
 type Incinerator interface {
-	Burned() <-chan Burner
+	Burned() []Burner
 }
 
 type incinerator struct {
-	burning chan Burner
-	burned  chan Burner
-	pending <-chan Burner
+	burning      chan Burner
+	burned       []Burner
+	pending      <-chan Burner
+	updateBurned chan Burner
 }
 
-func (i *incinerator) Burned() <-chan Burner {
+func (i *incinerator) Burned() []Burner {
 	return i.burned
 }
 
@@ -31,8 +32,12 @@ func (i *incinerator) loopBurn() {
 		case burner := <-i.burning:
 			go func() {
 				burner.Burn()
-				i.burned <- burner
+				i.updateBurned <- burner
 			}()
+
+		case burned := <-i.updateBurned:
+			// We update burned books here to serialize slice update.
+			i.burned = append(i.burned, burned)
 
 		case burner := <-i.pending:
 			go func() {
@@ -51,15 +56,27 @@ func (i *incinerator) loopBurn() {
 // there may be a stack of 100 books in front of the incinerator because a
 // worker feels like carrying that many at once.
 func NewIncinerator(capacity int, pending <-chan Burner) Incinerator {
-	burned := make(chan Burner)
-	burning := make(chan Burner, capacity)
-
 	incinerator := &incinerator{
-		burned:  burned,
-		burning: burning,
-		pending: pending,
+		burned:       make([]Burner, 0),
+		burning:      make(chan Burner, capacity),
+		pending:      pending,
+		updateBurned: make(chan Burner),
 	}
 
 	go incinerator.loopBurn()
 	return incinerator
+}
+
+// IncineratorGroup represents a group of incinerators.
+type IncineratorGroup interface{}
+
+type incineratorGroup struct {
+	incinerators []Incinerator
+}
+
+// NewIncineratorGroup creates a new incinerator group from a number of
+// incinerators.
+func NewIncineratorGroup(incinerators ...Incinerator) IncineratorGroup {
+	ig := &incineratorGroup{incinerators: incinerators}
+	return ig
 }
