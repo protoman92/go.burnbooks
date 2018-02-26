@@ -24,7 +24,7 @@ func incinerate(ig IncineratorGroup) {
 			for ix := range burnables {
 				bParams := &BookParams{
 					BurnDuration: defaultDuration,
-					UID:          strconv.Itoa(ix),
+					ID:           strconv.Itoa(ix),
 				}
 
 				burnable := NewBook(bParams)
@@ -44,8 +44,8 @@ func Test_BurnMultiple_ShouldEventuallyBurnAll(t *testing.T) {
 
 	iParams := &IncineratorParams{
 		Capacity:    capacity,
+		ID:          "1",
 		MinCapacity: minCapacity,
-		UID:         "1",
 	}
 
 	incinerator := NewIncinerator(iParams)
@@ -68,8 +68,8 @@ func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 
 	iParams := &IncineratorParams{
 		Capacity:    capacity,
+		ID:          "1",
 		MinCapacity: minCapacity,
-		UID:         "1",
 	}
 
 	incinerator := NewIncinerator(iParams)
@@ -79,7 +79,7 @@ func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 	for i := 0; i < burnRounds; i++ {
 		go func(ix int) {
 			// Unrealistic burn duration to simulate blocking operation.
-			bParams := &BookParams{BurnDuration: 1e15, UID: strconv.Itoa(ix)}
+			bParams := &BookParams{BurnDuration: 1e15, ID: strconv.Itoa(ix)}
 			burnable := NewBook(bParams)
 			ig.Incinerate(burnable)
 		}(i)
@@ -107,21 +107,21 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 
 		iParams := &IncineratorParams{
 			Capacity:    capacity,
+			ID:          id,
 			MinCapacity: minCapacity,
-			UID:         id,
 		}
 
 		otherIncs[ix] = NewIncinerator(iParams)
 	}
 
-	i1Params := &IncineratorParams{UID: id1}
+	i1Params := &IncineratorParams{ID: id1}
 	i1 := NewIncinerator(i1Params)
 	foreverID := "Forever"
 
 	// For the purpose of this test, this might as well be forever. Normally we
 	// should not let individual incinerators directly handle the burning, and
 	// instead delegate to an incinerator group for better resource allocation.
-	foreverParams := &BookParams{BurnDuration: 1e15, UID: foreverID}
+	foreverParams := &BookParams{BurnDuration: 1e15, ID: foreverID}
 	forever := NewBook(foreverParams)
 	i1.Incinerate(forever)
 

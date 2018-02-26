@@ -7,7 +7,7 @@ import (
 // BookParams represents the required parameters to set up a Book.
 type BookParams struct {
 	BurnDuration time.Duration
-	UID          string
+	ID           string
 }
 
 type book struct {
@@ -15,7 +15,11 @@ type book struct {
 }
 
 func (b *book) String() string {
-	return b.UID
+	return b.ID
+}
+
+func (b *book) UID() string {
+	return b.ID
 }
 
 func (b *book) Burn() {

@@ -11,12 +11,11 @@ type Incinerator interface {
 // IncineratorParams represents the required parameters to set up an incinerator.
 type IncineratorParams struct {
 	Capacity int
+	ID       string
 
 	// This represents the minimum capacity required before this incinerator can
 	// signal availability.
 	MinCapacity int
-
-	UID string
 }
 
 // FIncinerator represents an incinerator that has all functionalities, such
@@ -25,6 +24,7 @@ type FIncinerator interface {
 	BurnResultCollector
 	Incinerator
 	Availability() <-chan chan<- []Burnable
+	UID() string
 }
 
 type incinerator struct {
@@ -46,6 +46,10 @@ func (i *incinerator) Incinerate(burnables ...Burnable) {
 	go func() {
 		i.pending <- burnables
 	}()
+}
+
+func (i *incinerator) UID() string {
+	return i.ID
 }
 
 func (i *incinerator) loopBurn() {
@@ -95,7 +99,7 @@ func (i *incinerator) loopBurn() {
 					// Similar reasoning to above as to why this statement has to be in
 					// a goroutine.
 					updateAvailable <- 1
-					result := &BurnResult{incineratorID: i.UID, burned: burnable}
+					result := &BurnResult{incineratorID: i.ID, burned: burnable}
 					i.burnResult <- result
 				}(burnable)
 			}

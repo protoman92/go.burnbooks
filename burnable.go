@@ -8,6 +8,7 @@ package goburnbooks
 // only that some do so longer than others. Therefore, the Burn() method does
 // not error out.
 type Burnable interface {
+	UID() string
 	Burn()
 }
 
