@@ -22,7 +22,7 @@ func incinerate(ig IncineratorGroup) {
 			burnables := make([]Burnable, burnableCount)
 
 			for ix := range burnables {
-				bParams := BookParams{
+				bParams := &BookParams{
 					BurnDuration: defaultDuration,
 					UID:          strconv.Itoa(ix),
 				}
@@ -42,7 +42,7 @@ func Test_BurnMultiple_ShouldEventuallyBurnAll(t *testing.T) {
 	/// Setup
 	t.Parallel()
 
-	iParams := IncineratorParams{
+	iParams := &IncineratorParams{
 		Capacity:    capacity,
 		MinCapacity: minCapacity,
 		UID:         "1",
@@ -66,7 +66,7 @@ func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 	/// Setup
 	t.Parallel()
 
-	iParams := IncineratorParams{
+	iParams := &IncineratorParams{
 		Capacity:    capacity,
 		MinCapacity: minCapacity,
 		UID:         "1",
@@ -79,7 +79,7 @@ func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 	for i := 0; i < burnRounds; i++ {
 		go func(ix int) {
 			// Unrealistic burn duration to simulate blocking operation.
-			bParams := BookParams{BurnDuration: 1e15, UID: strconv.Itoa(ix)}
+			bParams := &BookParams{BurnDuration: 1e15, UID: strconv.Itoa(ix)}
 			burnable := NewBook(bParams)
 			ig.Incinerate(burnable)
 		}(i)
@@ -105,7 +105,7 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 	for ix := range otherIncs {
 		id := strconv.Itoa(ix)
 
-		iParams := IncineratorParams{
+		iParams := &IncineratorParams{
 			Capacity:    capacity,
 			MinCapacity: minCapacity,
 			UID:         id,
@@ -114,14 +114,14 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 		otherIncs[ix] = NewIncinerator(iParams)
 	}
 
-	i1Params := IncineratorParams{UID: id1}
+	i1Params := &IncineratorParams{UID: id1}
 	i1 := NewIncinerator(i1Params)
 	foreverID := "Forever"
 
 	// For the purpose of this test, this might as well be forever. Normally we
 	// should not let individual incinerators directly handle the burning, and
 	// instead delegate to an incinerator group for better resource allocation.
-	foreverParams := BookParams{BurnDuration: 1e15, UID: foreverID}
+	foreverParams := &BookParams{BurnDuration: 1e15, UID: foreverID}
 	forever := NewBook(foreverParams)
 	i1.Incinerate(forever)
 

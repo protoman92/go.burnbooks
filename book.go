@@ -11,7 +11,11 @@ type BookParams struct {
 }
 
 type book struct {
-	BookParams
+	*BookParams
+}
+
+func (b *book) String() string {
+	return b.UID
 }
 
 func (b *book) Burn() {
@@ -20,6 +24,6 @@ func (b *book) Burn() {
 }
 
 // NewBook returns a Burnable book.
-func NewBook(params BookParams) Burnable {
+func NewBook(params *BookParams) Burnable {
 	return &book{BookParams: params}
 }

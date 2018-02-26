@@ -28,7 +28,7 @@ type FIncinerator interface {
 }
 
 type incinerator struct {
-	IncineratorParams
+	*IncineratorParams
 	available  chan chan<- []Burnable
 	burnResult chan *BurnResult
 	pending    chan []Burnable
@@ -67,6 +67,13 @@ func (i *incinerator) loopBurn() {
 			// than a minimum do we signal availability.
 			if availableCount > i.MinCapacity {
 				go func() {
+					// In this implementation, an incinerator will receive a whole load
+					// when it signals availability, and the load will be kept pending
+					// instead of being directed elsewhere in case not all Burnables can
+					// be processed.
+					//
+					// If this were a real system, the rationale would be to minimize
+					// message count related to re-distributing workload.
 					i.available <- i.pending
 				}()
 			}
@@ -99,7 +106,7 @@ func (i *incinerator) loopBurn() {
 // NewIncinerator creates a new incinerator with a specified pending channel
 // and capacity. The capacity determines how many Burnables can be burned at any
 // given point in time.
-func NewIncinerator(params IncineratorParams) FIncinerator {
+func NewIncinerator(params *IncineratorParams) FIncinerator {
 	incinerator := &incinerator{
 		IncineratorParams: params,
 		available:         make(chan chan<- []Burnable),
