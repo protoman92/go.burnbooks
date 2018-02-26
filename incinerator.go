@@ -5,7 +5,8 @@ package goburnbooks
 // processes (bigger books burn more slowly).
 //
 // For the sake of simplicity, we assume that everything can be burnt eventually,
-// only that some do so longer than others.
+// only that some do so longer than others. Therefore, the Burn() method does
+// not error out.
 type Burner interface {
 	Burn()
 }
@@ -13,17 +14,42 @@ type Burner interface {
 // Incinerator represents something that can burn a Burner.
 type Incinerator interface {
 	Burned() []Burner
+
+	// Although we can feed Burners to the pending channel directly, calling this
+	// method allows us to define custom behavior, such as only allowing those
+	// with capacity to accept more Burner.
+	Feed(burners ...Burner)
+}
+
+// FullIncinerator represents an incinerator that has all functionalities. such
+// as signalling availability.
+type FullIncinerator interface {
+	Available
+	Incinerator
 }
 
 type incinerator struct {
+	available    chan bool
 	burning      chan Burner
 	burned       []Burner
-	pending      <-chan Burner
+	pending      chan Burner
 	updateBurned chan Burner
+}
+
+func (i *incinerator) Available() <-chan bool {
+	return i.available
 }
 
 func (i *incinerator) Burned() []Burner {
 	return i.burned
+}
+
+func (i *incinerator) Feed(burners ...Burner) {
+	go func() {
+		for _, burner := range burners {
+			i.pending <- burner
+		}
+	}()
 }
 
 func (i *incinerator) loopBurn() {
@@ -38,6 +64,10 @@ func (i *incinerator) loopBurn() {
 		case burned := <-i.updateBurned:
 			// We update burned books here to serialize slice update.
 			i.burned = append(i.burned, burned)
+
+			go func() {
+				i.available <- true
+			}()
 
 		case burner := <-i.pending:
 			go func() {
@@ -55,28 +85,19 @@ func (i *incinerator) loopBurn() {
 // many Burners are allowed to pile up before workers have to wait. For e.g.,
 // there may be a stack of 100 books in front of the incinerator because a
 // worker feels like carrying that many at once.
-func NewIncinerator(capacity int, pending <-chan Burner) Incinerator {
+func NewIncinerator(capacity int, pending chan Burner) FullIncinerator {
 	incinerator := &incinerator{
+		available:    make(chan bool),
 		burned:       make([]Burner, 0),
 		burning:      make(chan Burner, capacity),
 		pending:      pending,
 		updateBurned: make(chan Burner),
 	}
 
+	go func() {
+		incinerator.available <- true
+	}()
+
 	go incinerator.loopBurn()
 	return incinerator
-}
-
-// IncineratorGroup represents a group of incinerators.
-type IncineratorGroup interface{}
-
-type incineratorGroup struct {
-	incinerators []Incinerator
-}
-
-// NewIncineratorGroup creates a new incinerator group from a number of
-// incinerators.
-func NewIncineratorGroup(incinerators ...Incinerator) IncineratorGroup {
-	ig := &incineratorGroup{incinerators: incinerators}
-	return ig
 }

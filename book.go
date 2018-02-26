@@ -1,6 +1,7 @@
 package goburnbooks
 
 import (
+	"fmt"
 	"math/rand"
 	"time"
 )
@@ -15,6 +16,7 @@ func (b *book) String() string {
 }
 
 func (b *book) Burn() {
+	fmt.Printf("Burning %v\n", b)
 	time.Sleep(b.burnDuration)
 }
 

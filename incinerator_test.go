@@ -8,8 +8,8 @@ import (
 
 const (
 	capacity        = 10
-	count           = 100000
-	defaultDuration = time.Duration(1e8)
+	count           = 1000
+	defaultDuration = time.Duration(1)
 	waitDuration    = 1e9
 )
 
@@ -18,18 +18,19 @@ func Test_BurnMultipleBurners_ShouldEventuallyBurnAll(t *testing.T) {
 	t.Parallel()
 	pending := make(chan Burner, capacity)
 	incinerator := NewIncinerator(capacity, pending)
+	ig := NewIncineratorGroup(incinerator)
 
 	// When
 	for i := 0; i < count; i++ {
 		go func(ix int) {
 			burner := NewBurner(strconv.Itoa(ix), defaultDuration)
-			pending <- burner
+			ig.Feed(burner)
 		}(i)
 	}
 
 	// Then
 	time.Sleep(waitDuration)
-	length := len(incinerator.Burned())
+	length := len(ig.Burned())
 
 	if length != count {
 		t.Errorf("Should have burned %d, but instead got %d", count, length)
@@ -41,19 +42,20 @@ func Test_BurnMultipleBurners_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 	t.Parallel()
 	pending := make(chan Burner, capacity*1000)
 	incinerator := NewIncinerator(capacity, pending)
+	ig := NewIncineratorGroup(incinerator)
 
 	// When
 	for i := 0; i < count; i++ {
 		go func(ix int) {
 			// Unrealistic burn duration to simulate blocking operation.
 			burner := NewBurner(strconv.Itoa(ix), 1e10)
-			pending <- burner
+			ig.Feed(burner)
 		}(i)
 	}
 
 	// Then
 	time.Sleep(waitDuration)
-	length := len(incinerator.Burned())
+	length := len(ig.Burned())
 
 	if length != 0 {
 		t.Errorf("Should not have burned anything, but instead got %d", length)
