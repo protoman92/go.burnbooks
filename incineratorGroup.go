@@ -3,26 +3,30 @@ package goburnbooks
 // IncineratorGroup represents a group of incinerators.
 type IncineratorGroup interface {
 	Incinerator
+	Burned() []*BurnResult
 }
 
 type incineratorGroup struct {
-	availableIncinerators chan Incinerator
-	burned                []Burner
-	incinerators          []FullIncinerator
-	updateBurned          chan []Burner
+	availableIncinerators chan chan<- Burnable
+	burned                []*BurnResult
+	burnResult            chan *BurnResult
+	incinerators          []FIncinerator
+	updateBurned          chan *BurnResult
 }
 
-func (ig *incineratorGroup) Burned() []Burner {
+func (ig *incineratorGroup) Burned() []*BurnResult {
 	return ig.burned
 }
 
 // We need to check if any incinerator is ready first before we can stack up
-// Burners for burning.
-func (ig *incineratorGroup) Feed(burners ...Burner) {
+// Burnables for burning.
+func (ig *incineratorGroup) Incinerate(burnables ...Burnable) {
 	go func() {
 		select {
-		case i := <-ig.availableIncinerators:
-			i.Feed(burners...)
+		case ch := <-ig.availableIncinerators:
+			for _, burnable := range burnables {
+				ch <- burnable
+			}
 		}
 	}()
 }
@@ -30,37 +34,17 @@ func (ig *incineratorGroup) Feed(burners ...Burner) {
 // Loop each incinerator to fetch burned updates.
 func (ig *incineratorGroup) loopBurn() {
 	for _, i := range ig.incinerators {
-		go func(i FullIncinerator) {
+		go func(i FIncinerator) {
 			for {
 				select {
-				case available := <-i.Available():
-					if available {
-						go func() {
-							ig.availableIncinerators <- i
-						}()
-					}
+				case burned := <-i.BurnResult():
+					ig.updateBurned <- burned
+
+				case <-i.SignalAvailable():
+					go func() {
+						ig.availableIncinerators <- i.Pending()
+					}()
 				}
-			}
-		}(i)
-
-		go func(i FullIncinerator) {
-			// Since this map is local to each incinerator, we do not need to worry
-			// about concurrent modifications.
-			burnedMap := make(map[Burner]bool)
-
-			for {
-				justBurned := make([]Burner, 0)
-
-				for _, b := range i.Burned() {
-					if !burnedMap[b] {
-						justBurned = append(justBurned, b)
-						burnedMap[b] = true
-					}
-				}
-
-				go func() {
-					ig.updateBurned <- justBurned
-				}()
 			}
 		}(i)
 	}
@@ -69,7 +53,7 @@ func (ig *incineratorGroup) loopBurn() {
 		for {
 			select {
 			case burned := <-ig.updateBurned:
-				ig.burned = append(ig.burned, burned...)
+				ig.burned = append(ig.burned, burned)
 			}
 		}
 	}()
@@ -79,12 +63,13 @@ func (ig *incineratorGroup) loopBurn() {
 // incinerators. An incinerator group implements the same functionalities as
 // an incinerator, so we can access them directly instead of viewing individual
 // incinerators.
-func NewIncineratorGroup(incinerators ...FullIncinerator) Incinerator {
+func NewIncineratorGroup(incinerators ...FIncinerator) IncineratorGroup {
 	ig := &incineratorGroup{
-		availableIncinerators: make(chan Incinerator, len(incinerators)),
-		burned:                make([]Burner, 0),
+		availableIncinerators: make(chan chan<- Burnable, len(incinerators)),
+		burned:                make([]*BurnResult, 0),
+		burnResult:            make(chan *BurnResult),
 		incinerators:          incinerators,
-		updateBurned:          make(chan []Burner),
+		updateBurned:          make(chan *BurnResult),
 	}
 
 	ig.loopBurn()

@@ -1,32 +1,29 @@
 package goburnbooks
 
 import (
-	"fmt"
-	"math/rand"
 	"time"
 )
 
+// BookParams represents the required parameters to set up a Book.
+type BookParams struct {
+	BurnDuration time.Duration
+	UID          string
+}
+
 type book struct {
-	uid          string
-	burnDuration time.Duration
+	BookParams
 }
 
 func (b *book) String() string {
-	return b.uid
+	return b.UID
 }
 
 func (b *book) Burn() {
-	fmt.Printf("Burning %v\n", b)
-	time.Sleep(b.burnDuration)
+	// fmt.Printf("Burning %v\n", b)
+	time.Sleep(b.BurnDuration)
 }
 
-// NewBurner returns a burnable book.
-func NewBurner(uid string, burnDuration time.Duration) Burner {
-	return &book{uid: uid, burnDuration: burnDuration}
-}
-
-// NewRandomBurner returns a burnable book with a random burn duration.
-func NewRandomBurner(uid string) Burner {
-	d := time.Duration(rand.Int()) * time.Microsecond
-	return NewBurner(uid, d)
+// NewBook returns a Burnable book.
+func NewBook(params BookParams) Burnable {
+	return &book{BookParams: params}
 }
