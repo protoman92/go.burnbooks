@@ -7,46 +7,47 @@ type IncineratorGroup interface {
 }
 
 type incineratorGroup struct {
-	availableIncinerators chan chan<- []Burnable
-	burned                []*BurnResult
-	incinerators          []FIncinerator
+	burned       []*BurnResult
+	incinerators []FIncinerator
 }
 
 func (ig *incineratorGroup) Burned() []*BurnResult {
 	return ig.burned
 }
 
-// We need to check if any incinerator is ready first before we can stack up
-// Burnables for burning.
-func (ig *incineratorGroup) Incinerate(burnables ...Burnable) {
-	go func() {
-		select {
-		case ch := <-ig.availableIncinerators:
-			ch <- burnables
-		}
-	}()
+func (ig *incineratorGroup) Consume(provider BurnableProvider) {
+	for _, i := range ig.incinerators {
+		go i.Consume(provider)
+	}
 }
 
 // Loop each incinerator to fetch burned updates.
 func (ig *incineratorGroup) loopBurn() {
-	updateBurned := make(chan *BurnResult)
+	updateAllBurnedCh := make(chan *BurnResult)
 
 	for _, i := range ig.incinerators {
 		go func(i FIncinerator) {
-			availability := i.Availability()
-			burnResult := i.BurnResult()
+			var burnResultCh = i.BurnResult()
+			var burnResult *BurnResult
+			var updateBurnedCh chan<- *BurnResult
 
 			for {
+				// The sequence of this statement is:
+				// - When we receive a new burn result, set the burn result channel to
+				// nil to process in peace. Afterwards, initialize the burn result and
+				// result update channel.
+				// - After the burn result has been updated, reinstate the burn result
+				// channel to keep receiving updates.
 				select {
-				case burned := <-burnResult:
-					go func() {
-						updateBurned <- burned
-					}()
+				case burned := <-burnResultCh:
+					burnResultCh = nil
+					burnResult = burned
+					updateBurnedCh = updateAllBurnedCh
 
-				case ch := <-availability:
-					go func() {
-						ig.availableIncinerators <- ch
-					}()
+				case updateBurnedCh <- burnResult:
+					burnResult = nil
+					updateBurnedCh = nil
+					burnResultCh = i.BurnResult()
 				}
 			}
 		}(i)
@@ -55,7 +56,7 @@ func (ig *incineratorGroup) loopBurn() {
 	go func() {
 		for {
 			select {
-			case burned := <-updateBurned:
+			case burned := <-updateAllBurnedCh:
 				ig.burned = append(ig.burned, burned)
 			}
 		}
@@ -68,11 +69,10 @@ func (ig *incineratorGroup) loopBurn() {
 // incinerators.
 func NewIncineratorGroup(incinerators ...FIncinerator) IncineratorGroup {
 	ig := &incineratorGroup{
-		availableIncinerators: make(chan chan<- []Burnable, len(incinerators)),
-		burned:                make([]*BurnResult, 0),
-		incinerators:          incinerators,
+		burned:       make([]*BurnResult, 0),
+		incinerators: incinerators,
 	}
 
-	ig.loopBurn()
+	go ig.loopBurn()
 	return ig
 }

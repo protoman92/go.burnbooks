@@ -14,6 +14,6 @@ type Burnable interface {
 
 // BurnResult represents the result of a burning.
 type BurnResult struct {
-	incineratorID string
-	burned        Burnable
+	IncineratorID string
+	Burned        Burnable
 }

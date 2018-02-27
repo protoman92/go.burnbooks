@@ -1,56 +1,53 @@
-package goburnbooks
+package goburnbooks_test
 
 import (
+	gbb "goburnbooks"
 	"sort"
 	"strconv"
 	"testing"
 	"time"
 )
 
-const (
-	defaultTimeout = 1e8
-)
-
-func newRandomSupplyPile(count int, offset int) FSupplyPile {
-	books := make([]Suppliable, count)
+func newRandomSupplyPile(count int, offset int) gbb.FSupplyPile {
+	books := make([]gbb.Suppliable, count)
 
 	for i := 0; i < count; i++ {
 		id := offset + i
-		params := &BookParams{BurnDuration: 0, ID: strconv.Itoa(id)}
-		books[i] = NewBook(params)
+		params := &gbb.BookParams{BurnDuration: 0, ID: strconv.Itoa(id)}
+		books[i] = gbb.NewBook(params)
 	}
 
-	bookParams := &SupplyPileParams{supply: books}
-	return NewSupplyPile(bookParams)
+	bookParams := &gbb.SupplyPileParams{Supply: books}
+	return gbb.NewSupplyPile(bookParams)
 }
 
 func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 	/// Setup
 	t.Parallel()
 	pileCount, supplyCount := 20, 10000
-	totalBCount := pileCount * supplyCount
-	supplyPiles := make([]FSupplyPile, pileCount)
-	t.Logf("Have %d supplies in total", totalBCount)
+	totalSupplyCount := pileCount * supplyCount
+	supplyPiles := make([]gbb.FSupplyPile, pileCount)
+	t.Logf("Have %d supplies in total", totalSupplyCount)
 
 	for ix := range supplyPiles {
 		pile := newRandomSupplyPile(supplyCount, ix*supplyCount)
 		supplyPiles[ix] = pile
 	}
 
-	pileGroup := NewSupplyPileGroup(supplyPiles...)
+	pileGroup := gbb.NewSupplyPileGroup(supplyPiles...)
 	takerCount := 50
-	supplyTakers := make([]SupplyTaker, takerCount)
-	supplyChs := make([]chan []Suppliable, takerCount)
+	supplyTakers := make([]gbb.SupplyTaker, takerCount)
+	supplyChs := make([]chan []gbb.Suppliable, takerCount)
 
 	for ix := range supplyTakers {
-		loadSupplyCh := make(chan []Suppliable)
+		loadSupplyCh := make(chan []gbb.Suppliable)
 		readyCh := make(chan interface{})
 
-		btParams := &SupplyTakerParams{
-			capacity: 17,
-			id:       strconv.Itoa(ix),
-			loadCh:   loadSupplyCh,
-			readyCh:  readyCh,
+		btParams := &gbb.SupplyTakerParams{
+			Cap:     13,
+			ID:      strconv.Itoa(ix),
+			LoadCh:  loadSupplyCh,
+			ReadyCh: readyCh,
 		}
 
 		// Assume that the supply taker takes repeatedly at a specified delay.
@@ -64,17 +61,17 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 			}
 		}()
 
-		supply := NewSupplyTaker(btParams)
+		supply := gbb.NewSupplyTaker(btParams)
 		supplyTakers[ix] = supply
 		supplyChs[ix] = loadSupplyCh
 	}
 
 	// This ensures that loaded supplies are unique.
-	loadedSupplies := make(map[Suppliable]int, 0)
-	updateLoaded := make(chan []Suppliable)
+	loadedSupplies := make(map[gbb.Suppliable]int, 0)
+	updateLoaded := make(chan []gbb.Suppliable)
 
 	for _, ch := range supplyChs {
-		go func(ch chan []Suppliable) {
+		go func(ch chan []gbb.Suppliable) {
 			for {
 				select {
 				case burnables := <-ch:
@@ -101,26 +98,27 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 
 	/// When
 	for _, taker := range supplyTakers {
-		go func(taker SupplyTaker) {
+		go func(taker gbb.SupplyTaker) {
 			pileGroup.Supply(taker)
 		}(taker)
 	}
 
-	time.Sleep(2e9)
+	time.Sleep(waitDuration)
 
 	/// Then
-	allTakenResult := pileGroup.Taken()
+	allTakenResults := pileGroup.Taken()
 	allTakenMap := make(map[string]int, 0)
 	allTakenCount := 0
 
-	for _, result := range allTakenResult {
-		takenCount := len(result.supplyIds)
-		allTakenMap[result.takerID] = allTakenMap[result.takerID] + takenCount
+	for _, result := range allTakenResults {
+		takerID := result.TakerID
+		takenCount := len(result.SupplyIds)
+		allTakenMap[takerID] = allTakenMap[takerID] + takenCount
 		allTakenCount += takenCount
 	}
 
-	if allTakenCount != totalBCount {
-		t.Errorf("Should have taken %d, but got %d", totalBCount, allTakenCount)
+	if allTakenCount != totalSupplyCount {
+		t.Errorf("Should have taken %d, but got %d", totalSupplyCount, allTakenCount)
 	}
 
 	for key, value := range allTakenMap {
@@ -131,27 +129,35 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 		}
 	}
 
-	loadedLen := len(loadedSupplies)
+	loadedSuppliesLen := len(loadedSupplies)
 
-	if loadedLen != totalBCount {
-		t.Errorf("Should have taken %d, instead got %d", totalBCount, loadedLen)
+	if loadedSuppliesLen != totalSupplyCount {
+		t.Errorf(
+			"Should have taken %d, instead got %d",
+			totalSupplyCount,
+			loadedSuppliesLen,
+		)
 	}
 
-	keys := make([]int, 0)
+	loadSupplyKeys := make([]int, 0)
 
 	for key, value := range loadedSupplies {
 		numericKey, _ := strconv.Atoi(key.UID())
-		keys = append(keys, numericKey)
+		loadSupplyKeys = append(loadSupplyKeys, numericKey)
 
 		if value != 1 {
 			t.Errorf("%v should have been taken once, but was %d", key, value)
 		}
 	}
 
-	sort.Ints(keys)
-	keyLen := len(keys)
+	sort.Ints(loadSupplyKeys)
+	loadSupplyKeyLen := len(loadSupplyKeys)
 
-	if keyLen != totalBCount {
-		t.Errorf("Should have %d keys, instead got %d", totalBCount, keyLen)
+	if loadSupplyKeyLen != totalSupplyCount {
+		t.Errorf(
+			"Should have %d keys, instead got %d",
+			totalSupplyCount,
+			loadSupplyKeyLen,
+		)
 	}
 }

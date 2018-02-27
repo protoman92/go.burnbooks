@@ -11,8 +11,8 @@ type SupplyPile interface {
 
 // SupplyPileParams represents the required parameters to build a SupplyPile.
 type SupplyPileParams struct {
-	supply []Suppliable
-	id     string
+	Supply []Suppliable
+	ID     string
 }
 
 // FSupplyPile represents a pile of SupplyPiles with all functionalities.
@@ -104,9 +104,9 @@ func (bp *supplyPile) Supply(taker SupplyTaker) {
 				// Only at this step do both of the variables below get set. When the
 				// result has been successfully deposited, deinitialize them immediately.
 				loadResult = &SupplyTakeResult{
-					supplyIds: supplyIds,
-					pileID:    bp.id,
-					takerID:   taker.UID(),
+					SupplyIds: supplyIds,
+					PileID:    bp.id,
+					TakerID:   taker.UID(),
 				}
 
 				takeResultCh = bp.takeResultCh
@@ -140,7 +140,7 @@ func (bp *supplyPile) TakeResultChannel() <-chan *SupplyTakeResult {
 
 // NewSupplyPile creates a new SupplyPile.
 func NewSupplyPile(params *SupplyPileParams) FSupplyPile {
-	supplies := params.supply
+	supplies := params.Supply
 	supplyCh := make(chan Suppliable, len(supplies))
 
 	for _, supply := range supplies {
@@ -149,7 +149,7 @@ func NewSupplyPile(params *SupplyPileParams) FSupplyPile {
 
 	pile := &supplyPile{
 		supplyCh:     supplyCh,
-		id:           params.id,
+		id:           params.ID,
 		takeResultCh: make(chan *SupplyTakeResult),
 		takeTimeout:  1e9,
 	}

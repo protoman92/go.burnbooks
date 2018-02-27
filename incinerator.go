@@ -2,10 +2,7 @@ package goburnbooks
 
 // Incinerator represents something that can burn a Burnable.
 type Incinerator interface {
-	// Although we can feed Burnables to the pending channel directly, calling
-	// this method allows us to define custom behavior, such as only allowing
-	// those with capacity to accept more Burnables.
-	Incinerate(burnables ...Burnable)
+	Consume(provider BurnableProvider)
 }
 
 // IncineratorParams represents the required parameters to set up an incinerator.
@@ -22,89 +19,102 @@ type IncineratorParams struct {
 // as signalling availability.
 type FIncinerator interface {
 	Incinerator
-	Availability() <-chan chan<- []Burnable
 	BurnResult() <-chan *BurnResult
 	UID() string
 }
 
 type incinerator struct {
 	*IncineratorParams
-	available  chan chan<- []Burnable
 	burnResult chan *BurnResult
-	pending    chan []Burnable
-}
-
-func (i *incinerator) Availability() <-chan chan<- []Burnable {
-	return i.available
 }
 
 func (i *incinerator) BurnResult() <-chan *BurnResult {
 	return i.burnResult
 }
 
-func (i *incinerator) Incinerate(burnables ...Burnable) {
+func (i *incinerator) Consume(provider BurnableProvider) {
 	go func() {
-		i.pending <- burnables
+		capacity := i.Capacity
+		burning := make(chan interface{}, capacity)
+		burnResult := i.burnResult
+		var provideCh = provider.ProvideChannel()
+		var readyCh chan<- interface{}
+
+		// Initialize this channel every time a new batch of Burnables is received.
+		// Emissions from this channel means that enough items from a batch have
+		// been processed.
+		//
+		// The sequence of the channel init is as such:
+		// - A new batch is received, and this is initialized for that batch. Then
+		// the provide channel is nullified.
+		// - Once enough items have been burned, send a signal via this channel.
+		// Then the provide channel is reinstated and this channel is nullified.
+		var enoughProcessedCh chan interface{}
+
+		for {
+			select {
+			case burnables := <-provideCh:
+				// Nullify the provide channel to let the sequence run in peace.
+				provideCh = nil
+				addProcessed := make(chan interface{})
+				batchCount := len(burnables)
+				enoughProcessedCh = make(chan interface{})
+				processedCount := 0
+
+				go func() {
+					for {
+						select {
+						case <-addProcessed:
+							processedCount++
+
+							// Once we have processed enough items in a batch, send a signal
+							// via the appropriate channel so that we can signal ready and
+							// reinitialize the provide channel in order to receive the next
+							// batch.
+							if batchCount-processedCount < i.MinCapacity {
+								addProcessed = nil
+								enoughProcessedCh <- true
+							}
+						}
+					}
+				}()
+
+				for _, burnable := range burnables {
+					go func(burnable Burnable) {
+						// Since this channel has a limited buffer, once the capacity is
+						// reached this will block.
+						burning <- true
+						burnable.Burn()
+						<-burning
+
+						go func() {
+							// This is in a goroutine because this channel could be nullified
+							// halfway after enough items have been processed to prevent
+							// duplicate signals.
+							addProcessed <- true
+						}()
+
+						result := &BurnResult{Burned: burnable, IncineratorID: i.ID}
+						burnResult <- result
+					}(burnable)
+				}
+
+			case <-enoughProcessedCh:
+				enoughProcessedCh = nil
+				readyCh = provider.ReadyChannel()
+
+				// Reinstate the provide channel to receive more requests.
+				provideCh = provider.ProvideChannel()
+
+			case readyCh <- true:
+				readyCh = nil
+			}
+		}
 	}()
 }
 
 func (i *incinerator) UID() string {
 	return i.ID
-}
-
-func (i *incinerator) loopBurn() {
-	burning := make(chan interface{}, i.Capacity)
-	availableCount := i.Capacity
-	updateAvailable := make(chan int)
-
-	for {
-		select {
-		case update := <-updateAvailable:
-			// We serialize count updates with a channel. Admittedly this is the not
-			// the best approach because sometimes the count can get below 0, but it
-			// works well enough to limit the number of times this incinerator signals
-			// availability.
-			availableCount += update
-
-			// The number of Burnables in pending pile may be way more than spare
-			// capacity, so here we enforce that only when available slots is more
-			// than a minimum do we signal availability.
-			if availableCount > i.MinCapacity {
-				go func() {
-					// In this implementation, an incinerator will receive a whole load
-					// when it signals availability, and the load will be kept pending
-					// instead of being directed elsewhere in case not all Burnables can
-					// be processed.
-					//
-					// If this were a real system, the rationale would be to minimize
-					// message count related to re-distributing workload.
-					i.available <- i.pending
-				}()
-			}
-
-		case burnables := <-i.pending:
-			for _, burnable := range burnables {
-				go func(burnable Burnable) {
-					// If the incinerator capacity is reached, this should block.
-					burning <- true
-
-					// If this statement is not in a goroutine, it will block because it
-					// is not buffered. As a result, we will never reach the update code.
-					updateAvailable <- -1
-					burnable.Burn()
-
-					// Release a slot for the next Burnable.
-					<-burning
-
-					// Similar reasoning to above as to why this statement has to be in
-					// a goroutine.
-					updateAvailable <- 1
-					result := &BurnResult{incineratorID: i.ID, burned: burnable}
-					i.burnResult <- result
-				}(burnable)
-			}
-		}
-	}
 }
 
 // NewIncinerator creates a new incinerator with a specified pending channel
@@ -113,15 +123,8 @@ func (i *incinerator) loopBurn() {
 func NewIncinerator(params *IncineratorParams) FIncinerator {
 	incinerator := &incinerator{
 		IncineratorParams: params,
-		available:         make(chan chan<- []Burnable),
 		burnResult:        make(chan *BurnResult),
-		pending:           make(chan []Burnable),
 	}
 
-	go func() {
-		incinerator.available <- incinerator.pending
-	}()
-
-	go incinerator.loopBurn()
 	return incinerator
 }
