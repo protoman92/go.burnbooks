@@ -15,8 +15,7 @@ type IncineratorParams struct {
 	MinCapacity int
 }
 
-// FIncinerator represents an incinerator that has all functionalities, such
-// as signalling availability.
+// FIncinerator represents an incinerator that has all functionalities.
 type FIncinerator interface {
 	Incinerator
 	BurnResult() <-chan *BurnResult
@@ -49,6 +48,8 @@ func (i *incinerator) Consume(provider BurnableProvider) {
 		// the provide channel is nullified.
 		// - Once enough items have been burned, send a signal via this channel.
 		// Then the provide channel is reinstated and this channel is nullified.
+		//
+		// Essentially these 2 channels are mutually exclusive.
 		var enoughProcessedCh chan interface{}
 
 		for {
@@ -101,7 +102,7 @@ func (i *incinerator) Consume(provider BurnableProvider) {
 
 			case <-enoughProcessedCh:
 				enoughProcessedCh = nil
-				readyCh = provider.ReadyChannel()
+				readyCh = provider.ConsumeReadyChannel()
 
 				// Reinstate the provide channel to receive more requests.
 				provideCh = provider.ProvideChannel()

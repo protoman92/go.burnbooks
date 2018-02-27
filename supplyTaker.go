@@ -8,16 +8,22 @@ import (
 type SupplyTaker interface {
 	Capacity() int
 	LoadChannel() chan<- []Suppliable
-	ReadyChannel() <-chan interface{}
-	UID() string
+	SupplyTakerID() string
+	TakeReadyChannel() <-chan interface{}
+}
+
+// SupplyTakerRawParams represents only the immutable parameters used to build
+// a taker.
+type SupplyTakerRawParams struct {
+	Cap  int
+	STID string
 }
 
 // SupplyTakerParams represents all the required parameters to build a taker.
 type SupplyTakerParams struct {
-	Cap     int
-	ID      string
-	LoadCh  chan<- []Suppliable
-	ReadyCh chan interface{}
+	*SupplyTakerRawParams
+	LoadCh      chan<- []Suppliable
+	TakeReadyCh chan interface{}
 }
 
 type supplyTaker struct {
@@ -32,12 +38,12 @@ func (bt *supplyTaker) LoadChannel() chan<- []Suppliable {
 	return bt.LoadCh
 }
 
-func (bt *supplyTaker) ReadyChannel() <-chan interface{} {
-	return bt.ReadyCh
+func (bt *supplyTaker) TakeReadyChannel() <-chan interface{} {
+	return bt.TakeReadyCh
 }
 
-func (bt *supplyTaker) UID() string {
-	return bt.ID
+func (bt *supplyTaker) SupplyTakerID() string {
+	return bt.STID
 }
 
 // NewSupplyTaker creates a new SupplyTaker.

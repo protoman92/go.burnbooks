@@ -24,13 +24,11 @@ func newRandomSupplyPile(count int, offset int) gbb.FSupplyPile {
 func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 	/// Setup
 	t.Parallel()
-	pileCount, supplyCount := 20, 10000
-	totalSupplyCount := pileCount * supplyCount
-	supplyPiles := make([]gbb.FSupplyPile, pileCount)
+	supplyPiles := make([]gbb.FSupplyPile, supplyPileCount)
 	t.Logf("Have %d supplies in total", totalSupplyCount)
 
 	for ix := range supplyPiles {
-		pile := newRandomSupplyPile(supplyCount, ix*supplyCount)
+		pile := newRandomSupplyPile(supplyPerPileCount, ix*supplyPerPileCount)
 		supplyPiles[ix] = pile
 	}
 
@@ -43,11 +41,15 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 		loadSupplyCh := make(chan []gbb.Suppliable)
 		readyCh := make(chan interface{})
 
+		btRawParams := &gbb.SupplyTakerRawParams{
+			Cap:  13,
+			STID: strconv.Itoa(ix),
+		}
+
 		btParams := &gbb.SupplyTakerParams{
-			Cap:     13,
-			ID:      strconv.Itoa(ix),
-			LoadCh:  loadSupplyCh,
-			ReadyCh: readyCh,
+			SupplyTakerRawParams: btRawParams,
+			LoadCh:               loadSupplyCh,
+			TakeReadyCh:          readyCh,
 		}
 
 		// Assume that the supply taker takes repeatedly at a specified delay.
@@ -142,7 +144,7 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 	loadSupplyKeys := make([]int, 0)
 
 	for key, value := range loadedSupplies {
-		numericKey, _ := strconv.Atoi(key.UID())
+		numericKey, _ := strconv.Atoi(key.SuppliableID())
 		loadSupplyKeys = append(loadSupplyKeys, numericKey)
 
 		if value != 1 {

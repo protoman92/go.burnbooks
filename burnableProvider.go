@@ -2,21 +2,28 @@ package goburnbooks
 
 // BurnableProvider represents a Burnable provider.
 type BurnableProvider interface {
-	ProvideChannel() <-chan []Burnable
+	BurnableProviderID() string
 
 	// Beware that an emission does not mean the previous work load has been
 	// finished, just that the incinerator has burned enough to take in more, and
 	// it does not expect the remaining load to take long.
-	ReadyChannel() chan<- interface{}
-	UID() string
+	ConsumeReadyChannel() chan<- interface{}
+
+	ProvideChannel() <-chan []Burnable
+}
+
+// BurnableProviderRawParams represents only the immutable parameters used to
+// build a provider.
+type BurnableProviderRawParams struct {
+	BPID string
 }
 
 // BurnableProviderParams represents all the required parameters to build a
 // provider.
 type BurnableProviderParams struct {
-	ID        string
-	ProvideCh <-chan []Burnable
-	ReadyCh   chan<- interface{}
+	*BurnableProviderRawParams
+	ConsumeReadyCh chan<- interface{}
+	ProvideCh      <-chan []Burnable
 }
 
 type burnableProvider struct {
@@ -27,12 +34,12 @@ func (bp *burnableProvider) ProvideChannel() <-chan []Burnable {
 	return bp.ProvideCh
 }
 
-func (bp *burnableProvider) ReadyChannel() chan<- interface{} {
-	return bp.ReadyCh
+func (bp *burnableProvider) ConsumeReadyChannel() chan<- interface{} {
+	return bp.ConsumeReadyCh
 }
 
-func (bp *burnableProvider) UID() string {
-	return bp.ID
+func (bp *burnableProvider) BurnableProviderID() string {
+	return bp.BPID
 }
 
 // NewBurnableProvider returns a new BurnableProvider.

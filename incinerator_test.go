@@ -31,11 +31,12 @@ func newBurnables(params testParams, pref1 string, pref2 string) []gbb.Burnable 
 func incinerate(ig gbb.IncineratorGroup, params testParams) {
 	for i := 0; i < providerCount; i++ {
 		provideCh := make(chan []gbb.Burnable)
+		prRawParams := &gbb.BurnableProviderRawParams{BPID: strconv.Itoa(i)}
 
 		prParams := &gbb.BurnableProviderParams{
-			ID:        strconv.Itoa(i),
-			ProvideCh: provideCh,
-			ReadyCh:   make(chan interface{}, 1),
+			BurnableProviderRawParams: prRawParams,
+			ProvideCh:                 provideCh,
+			ConsumeReadyCh:            make(chan interface{}, 1),
 		}
 
 		provider := gbb.NewBurnableProvider(prParams)
@@ -73,16 +74,11 @@ func Test_BurnMultiple_ShouldEventuallyBurnAll(t *testing.T) {
 	// Then
 	allBurned := ig.Burned()
 	allBurnedLen := len(allBurned)
+	burnedMap := burnedIDMap(ig)
+	burnedMapLen := len(burnedMap)
 
 	if allBurnedLen != totalBurnCount {
 		t.Errorf("Should have burned %d, but got %d", totalBurnCount, allBurnedLen)
-	}
-
-	burnedMap := make(map[string]int, 0)
-
-	for _, burned := range allBurned {
-		id := burned.Burned.UID()
-		burnedMap[id] = burnedMap[id] + 1
 	}
 
 	for key, value := range burnedMap {
@@ -90,8 +86,6 @@ func Test_BurnMultiple_ShouldEventuallyBurnAll(t *testing.T) {
 			t.Errorf("%s should have been burned once, but got %d", key, value)
 		}
 	}
-
-	burnedMapLen := len(burnedMap)
 
 	if burnedMapLen != totalBurnCount {
 		t.Errorf("Should have burned %d, but got %d", totalBurnCount, allBurnedLen)
@@ -126,7 +120,6 @@ func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 	/// Setup
 	t.Parallel()
-	incineratorCount := 10
 	allIncs := make([]gbb.FIncinerator, incineratorCount)
 
 	for ix := range allIncs {
@@ -147,22 +140,17 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 	incinerate(ig, testParams{burnDuration: 1e5})
 
 	/// Then
-	allBurned := ig.Burned()
-	allBurnedCount := 0
-	burnedSet := make(map[gbb.Burnable]bool, 0)
-	incineratorMap := make(map[string]int, 0)
+	burnIdMap := burnedIDMap(ig)
+	burnedIdMapLen := len(burnIdMap)
+	incineratorMap := burnContributorMap(ig)
+	incineratorMapLen := len(incineratorMap)
 
-	for _, burned := range allBurned {
-		allBurnedCount++
-		burnedSet[burned.Burned] = true
-		incineratorID := burned.IncineratorID
-		incineratorMap[incineratorID] = incineratorMap[incineratorID] + 1
-	}
-
-	incMapLen := len(incineratorMap)
-
-	if incMapLen != incineratorCount {
-		t.Errorf("Expected %d incinerators, but got %d", incineratorCount, incMapLen)
+	if incineratorMapLen != incineratorCount {
+		t.Errorf(
+			"Expected %d incinerators, but got %d",
+			incineratorCount,
+			incineratorMapLen,
+		)
 	}
 
 	for key, value := range incineratorMap {
@@ -173,9 +161,7 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 		}
 	}
 
-	allBurnedLen := len(burnedSet)
-
-	if allBurnedLen != totalBurnCount {
-		t.Errorf("Should have burned %d, instead got %d", totalBurnCount, allBurnedLen)
+	if burnedIdMapLen != totalBurnCount {
+		t.Errorf("Should have burned %d, but got %d", totalBurnCount, burnedIdMapLen)
 	}
 }

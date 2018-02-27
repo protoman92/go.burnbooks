@@ -32,7 +32,7 @@ func (bp *supplyPile) Supply(taker SupplyTaker) {
 	go func() {
 		capacity := taker.Capacity()
 		loaded := make([]Suppliable, 0)
-		readyCh := taker.ReadyChannel()
+		readyCh := taker.TakeReadyChannel()
 		var loadResult *SupplyTakeResult
 		var loadSupplyCh chan<- []Suppliable
 		var startLoadCh chan<- interface{}
@@ -98,7 +98,7 @@ func (bp *supplyPile) Supply(taker SupplyTaker) {
 				supplyIds := make([]string, len(loaded))
 
 				for ix, supply := range loaded {
-					supplyIds[ix] = supply.UID()
+					supplyIds[ix] = supply.SuppliableID()
 				}
 
 				// Only at this step do both of the variables below get set. When the
@@ -106,7 +106,7 @@ func (bp *supplyPile) Supply(taker SupplyTaker) {
 				loadResult = &SupplyTakeResult{
 					SupplyIds: supplyIds,
 					PileID:    bp.id,
-					TakerID:   taker.UID(),
+					TakerID:   taker.SupplyTakerID(),
 				}
 
 				takeResultCh = bp.takeResultCh
@@ -128,7 +128,7 @@ func (bp *supplyPile) Supply(taker SupplyTaker) {
 				loaded = make([]Suppliable, 0)
 
 				// Reinstate the ready channel to start taking requests again.
-				readyCh = taker.ReadyChannel()
+				readyCh = taker.TakeReadyChannel()
 			}
 		}
 	}()
