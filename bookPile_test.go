@@ -44,13 +44,25 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 
 	for ix := range bookTakers {
 		loadBookCh := make(chan []Burnable)
+		readyCh := make(chan interface{})
 
 		btParams := &BookTakerParams{
-			capacity:  17,
-			id:        strconv.Itoa(ix),
-			loadBooks: loadBookCh,
-			takeDelay: 1e5,
+			capacity: 17,
+			id:       strconv.Itoa(ix),
+			loadCh:   loadBookCh,
+			readyCh:  readyCh,
 		}
+
+		// Assume that the book taker takes book repeatedly at a specified delay.
+		go func() {
+			for {
+				time.Sleep(1e5)
+
+				go func() {
+					readyCh <- true
+				}()
+			}
+		}()
 
 		bookTaker := NewBookTaker(btParams)
 		bookTakers[ix] = bookTaker

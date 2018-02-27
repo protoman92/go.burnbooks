@@ -2,27 +2,22 @@ package goburnbooks
 
 import (
 	"fmt"
-	"time"
 )
 
 // BookTaker represents a worker that takes Books for some purposes.
 type BookTaker interface {
 	Capacity() int
-	LoadBooks() chan<- []Burnable
-
-	// This delay is used to space out takes. In the case of book burning, this
-	// delay would be the length of the trip from a book pile to a incinerator.
-	TakeDelay() time.Duration
-
+	LoadChannel() chan<- []Burnable
+	ReadyChannel() <-chan interface{}
 	UID() string
 }
 
 // BookTakerParams represents all the required parameters to build a book taker.
 type BookTakerParams struct {
-	capacity  int
-	id        string
-	loadBooks chan<- []Burnable
-	takeDelay time.Duration
+	capacity int
+	id       string
+	loadCh   chan<- []Burnable
+	readyCh  chan interface{}
 }
 
 type bookTaker struct {
@@ -33,12 +28,12 @@ func (bt *bookTaker) Capacity() int {
 	return bt.capacity
 }
 
-func (bt *bookTaker) LoadBooks() chan<- []Burnable {
-	return bt.loadBooks
+func (bt *bookTaker) LoadChannel() chan<- []Burnable {
+	return bt.loadCh
 }
 
-func (bt *bookTaker) TakeDelay() time.Duration {
-	return bt.takeDelay
+func (bt *bookTaker) ReadyChannel() <-chan interface{} {
+	return bt.readyCh
 }
 
 func (bt *bookTaker) UID() string {

@@ -18,43 +18,33 @@ type BookPileParams struct {
 // FBookPile represents a pile of Books with all functionalities.
 type FBookPile interface {
 	BookPile
-	Available() <-chan interface{}
-	TakeResult() <-chan *BookTakeResult
+	TakeResultChannel() <-chan *BookTakeResult
 }
 
 type bookPile struct {
-	available   chan interface{}
-	books       chan Burnable
-	id          string
-	takeResult  chan *BookTakeResult
-	takeTimeout time.Duration
-}
-
-func (bp *bookPile) Available() <-chan interface{} {
-	return bp.available
+	bookCh       chan Burnable
+	id           string
+	takeResultCh chan *BookTakeResult
+	takeTimeout  time.Duration
 }
 
 func (bp *bookPile) Supply(taker BookTaker) {
 	go func() {
-		bookCh := bp.books
 		capacity := taker.Capacity()
 		loaded := make([]Burnable, 0)
-		var availableCh, startLoadCh chan<- interface{}
-		var delayTake chan interface{}
+		readyCh := taker.ReadyChannel()
+		var bookCh chan Burnable
 		var loadBookCh chan<- []Burnable
 		var loadResult *BookTakeResult
+		var startLoadCh chan<- interface{}
 		var takeResultCh chan<- *BookTakeResult
+		var timeoutCh <-chan time.Time
 
 		for {
-			var bookCh2 chan Burnable
-
-			if len(loaded) < capacity {
-				// Only when loaded has not filled capacity do we initialize the book
-				// channel. Otherwise, this is a nil channel that will not be selected.
-				bookCh2 = bookCh
-			}
-
 			// The sequence of operation here is:
+			// - The pile waits for the taker to be ready first, then initialize the
+			// book and timeout channels. The ready channel is then nullified to
+			// ignore subsequent requests.
 			// - The book channel and the timeout channel compete to emit. If the
 			// book channel is empty, the timeout channel will win eventually.
 			// - Once the taker capacity has been reached, or the timeout happens,
@@ -66,22 +56,31 @@ func (bp *bookPile) Supply(taker BookTaker) {
 			// for a specified period of time.
 			// - Once the delay channel has completed work, signal the availability
 			// channel.
-			// - Once the availability channel has received a signal, reset the loaded
-			// slice to start another loading process.
+			// - Once the availability channel has received a signal, reset the ready
+			// channel and the loaded slice to start another loading process.
 			//
 			// A possible optimization is to send the take result in another goroutine
 			// so as not to block the rest of the sequence.
 			select {
-			case book := <-bookCh2:
+			case <-readyCh:
+				// Nullify the ready channel here to let the sequence run in peace.
+				readyCh = nil
+				bookCh = bp.bookCh
+				timeoutCh = time.After(bp.takeTimeout)
+
+			case book := <-bookCh:
 				loaded = append(loaded, book)
 
 				if len(loaded) == capacity {
+					bookCh = nil
+
 					// This must be initialized with 1 buffer slot so that it does not
 					// block when we try to insert value below.
 					startLoadCh = make(chan interface{}, 1)
 				}
 
-			case <-time.After(bp.takeTimeout):
+			case <-timeoutCh:
+				timeoutCh = nil
 				startLoadCh = make(chan interface{}, 1)
 
 			case startLoadCh <- true:
@@ -96,7 +95,7 @@ func (bp *bookPile) Supply(taker BookTaker) {
 				// If the available channel was initialized, these two channels will
 				// essentially be chosen at random. It does not matter which one goes
 				// first, however.
-				loadBookCh = taker.LoadBooks()
+				loadBookCh = taker.LoadChannel()
 
 			case loadBookCh <- loaded:
 				loadBookCh = nil
@@ -114,43 +113,32 @@ func (bp *bookPile) Supply(taker BookTaker) {
 					takerID: taker.UID(),
 				}
 
-				takeResultCh = bp.takeResult
+				takeResultCh = bp.takeResultCh
 
 			case takeResultCh <- loadResult:
-				takeResultCh = nil
-				loadResult = nil
-
-				// Buffer 1 to avoid blocking on delayTake.
-				delayTake = make(chan interface{}, 1)
-
-			case delayTake <- true:
-				delayTake = nil
-
-				if len(loaded) == capacity {
-					// If the number of loaded books is equal to the taker's capacity,
-					// there is a good chance that there are still books in this pile
-					// (unless the initial number of books is exactly divisible by said
-					// capacity, but this would only add one more loop). Therefore, we
-					// send an availability signal.
-					availableCh = bp.available
+				if len(loaded) != capacity {
+					// If the number of loaded books is not equal to the taker's capacity,
+					// the pile does not have enough books left for another take operation.
+					return
 				}
 
-				time.Sleep(taker.TakeDelay())
-
-			case availableCh <- true:
-				availableCh = nil
+				takeResultCh = nil
+				loadResult = nil
 
 				// Reset the loaded slice here to enable next round of loading. This
 				// is done at the last step of the process, before we force a delay on
 				// the next take operation.
 				loaded = make([]Burnable, 0)
+
+				// Reinstate the ready channel to start taking requests again.
+				readyCh = taker.ReadyChannel()
 			}
 		}
 	}()
 }
 
-func (bp *bookPile) TakeResult() <-chan *BookTakeResult {
-	return bp.takeResult
+func (bp *bookPile) TakeResultChannel() <-chan *BookTakeResult {
+	return bp.takeResultCh
 }
 
 // NewBookPile creates a new BookPile.
@@ -163,16 +151,11 @@ func NewBookPile(params *BookPileParams) FBookPile {
 	}
 
 	pile := &bookPile{
-		available:   make(chan interface{}),
-		books:       bookCh,
-		id:          params.id,
-		takeResult:  make(chan *BookTakeResult),
-		takeTimeout: 1e9,
+		bookCh:       bookCh,
+		id:           params.id,
+		takeResultCh: make(chan *BookTakeResult),
+		takeTimeout:  1e9,
 	}
-
-	go func() {
-		pile.available <- true
-	}()
 
 	return pile
 }
