@@ -11,8 +11,8 @@ const (
 	defaultTimeout = 1e8
 )
 
-func newRandomBookPile(count int, offset int) FBookPile {
-	books := make([]Burnable, count)
+func newRandomSupplyPile(count int, offset int) FSupplyPile {
+	books := make([]Suppliable, count)
 
 	for i := 0; i < count; i++ {
 		id := offset + i
@@ -20,40 +20,40 @@ func newRandomBookPile(count int, offset int) FBookPile {
 		books[i] = NewBook(params)
 	}
 
-	bookParams := &BookPileParams{books: books}
+	bookParams := &SupplyPileParams{supply: books}
 	return NewBookPile(bookParams)
 }
 
-func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
+func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 	/// Setup
 	t.Parallel()
-	pileCount, bookCount := 20, 1000
-	totalBCount := pileCount * bookCount
-	bookPiles := make([]FBookPile, pileCount)
-	t.Logf("Have %d books in total", totalBCount)
+	pileCount, supplyCount := 20, 10000
+	totalBCount := pileCount * supplyCount
+	supplyPiles := make([]FSupplyPile, pileCount)
+	t.Logf("Have %d supplies in total", totalBCount)
 
-	for ix := range bookPiles {
-		pile := newRandomBookPile(bookCount, ix*bookCount)
-		bookPiles[ix] = pile
+	for ix := range supplyPiles {
+		pile := newRandomSupplyPile(supplyCount, ix*supplyCount)
+		supplyPiles[ix] = pile
 	}
 
-	pileGroup := NewBookPileGroup(bookPiles...)
+	pileGroup := NewSupplyPileGroup(supplyPiles...)
 	takerCount := 50
-	bookTakers := make([]BookTaker, takerCount)
-	bookChs := make([]chan []Burnable, takerCount)
+	supplyTakers := make([]SupplyTaker, takerCount)
+	supplyChs := make([]chan []Suppliable, takerCount)
 
-	for ix := range bookTakers {
-		loadBookCh := make(chan []Burnable)
+	for ix := range supplyTakers {
+		loadSupplyCh := make(chan []Suppliable)
 		readyCh := make(chan interface{})
 
-		btParams := &BookTakerParams{
+		btParams := &SupplyTakerParams{
 			capacity: 17,
 			id:       strconv.Itoa(ix),
-			loadCh:   loadBookCh,
+			loadCh:   loadSupplyCh,
 			readyCh:  readyCh,
 		}
 
-		// Assume that the book taker takes book repeatedly at a specified delay.
+		// Assume that the supply taker takes repeatedly at a specified delay.
 		go func() {
 			for {
 				time.Sleep(1e5)
@@ -64,17 +64,17 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 			}
 		}()
 
-		bookTaker := NewBookTaker(btParams)
-		bookTakers[ix] = bookTaker
-		bookChs[ix] = loadBookCh
+		supply := NewSupplyTaker(btParams)
+		supplyTakers[ix] = supply
+		supplyChs[ix] = loadSupplyCh
 	}
 
-	// This ensures that loaded books are unique.
-	loadedBooks := make(map[Burnable]int, 0)
-	updateLoaded := make(chan []Burnable)
+	// This ensures that loaded supplies are unique.
+	loadedSupplies := make(map[Suppliable]int, 0)
+	updateLoaded := make(chan []Suppliable)
 
-	for _, ch := range bookChs {
-		go func(ch chan []Burnable) {
+	for _, ch := range supplyChs {
+		go func(ch chan []Suppliable) {
 			for {
 				select {
 				case burnables := <-ch:
@@ -92,7 +92,7 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 			case loaded := <-updateLoaded:
 				if len(loaded) > 0 {
 					for _, item := range loaded {
-						loadedBooks[item] = loadedBooks[item] + 1
+						loadedSupplies[item] = loadedSupplies[item] + 1
 					}
 				}
 			}
@@ -100,8 +100,8 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 	}()
 
 	/// When
-	for _, taker := range bookTakers {
-		go func(taker BookTaker) {
+	for _, taker := range supplyTakers {
+		go func(taker SupplyTaker) {
 			pileGroup.Supply(taker)
 		}(taker)
 	}
@@ -114,7 +114,7 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 	allTakenCount := 0
 
 	for _, result := range allTakenResult {
-		takenCount := len(result.bookIds)
+		takenCount := len(result.supplyIds)
 		allTakenMap[result.takerID] = allTakenMap[result.takerID] + takenCount
 		allTakenCount += takenCount
 	}
@@ -124,14 +124,14 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 	}
 
 	for key, value := range allTakenMap {
-		t.Logf("Book taker %s took %d books", key, value)
+		t.Logf("Supply taker %s took %d supplies", key, value)
 
 		if value == 0 {
 			t.Errorf("%s should have taken some, but took nothing", key)
 		}
 	}
 
-	loadedLen := len(loadedBooks)
+	loadedLen := len(loadedSupplies)
 
 	if loadedLen != totalBCount {
 		t.Errorf("Should have taken %d, instead got %d", totalBCount, loadedLen)
@@ -139,7 +139,7 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 
 	keys := make([]int, 0)
 
-	for key, value := range loadedBooks {
+	for key, value := range loadedSupplies {
 		numericKey, _ := strconv.Atoi(key.UID())
 		keys = append(keys, numericKey)
 

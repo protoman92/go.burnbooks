@@ -10,6 +10,11 @@ type BookParams struct {
 	ID           string
 }
 
+// Book represents a Book.
+type Book interface {
+	Burnable
+}
+
 type book struct {
 	*BookParams
 }
@@ -27,7 +32,7 @@ func (b *book) Burn() {
 	time.Sleep(b.BurnDuration)
 }
 
-// NewBook returns a Burnable book.
-func NewBook(params *BookParams) Burnable {
+// NewBook returns a Burnable and Suppliable book.
+func NewBook(params *BookParams) Book {
 	return &book{BookParams: params}
 }
