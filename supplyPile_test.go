@@ -21,7 +21,7 @@ func newRandomSupplyPile(count int, offset int) FSupplyPile {
 	}
 
 	bookParams := &SupplyPileParams{supply: books}
-	return NewBookPile(bookParams)
+	return NewSupplyPile(bookParams)
 }
 
 func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {

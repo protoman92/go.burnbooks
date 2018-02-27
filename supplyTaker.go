@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-// SupplyTaker represents a worker that takes Books for some purposes.
+// SupplyTaker represents a worker that takes Suppliables for some purposes.
 type SupplyTaker interface {
 	Capacity() int
 	LoadChannel() chan<- []Suppliable

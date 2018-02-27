@@ -114,7 +114,7 @@ func (bp *supplyPile) Supply(taker SupplyTaker) {
 			case takeResultCh <- loadResult:
 				if len(loaded) != capacity {
 					// If the number of loaded supplies is not equal to the taker's
-					// capacity, the pile does not have enough books left for another
+					// capacity, the pile does not have enough supplies left for another
 					// take operation.
 					return
 				}
@@ -138,13 +138,13 @@ func (bp *supplyPile) TakeResultChannel() <-chan *SupplyTakeResult {
 	return bp.takeResultCh
 }
 
-// NewBookPile creates a new BookPile.
-func NewBookPile(params *SupplyPileParams) FSupplyPile {
-	books := params.supply
-	supplyCh := make(chan Suppliable, len(books))
+// NewSupplyPile creates a new SupplyPile.
+func NewSupplyPile(params *SupplyPileParams) FSupplyPile {
+	supplies := params.supply
+	supplyCh := make(chan Suppliable, len(supplies))
 
-	for _, book := range books {
-		supplyCh <- book
+	for _, supply := range supplies {
+		supplyCh <- supply
 	}
 
 	pile := &supplyPile{
