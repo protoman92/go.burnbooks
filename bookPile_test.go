@@ -25,11 +25,12 @@ func newRandomBookPile(count int, offset int) FBookPile {
 }
 
 func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
-	// Setup
+	/// Setup
 	t.Parallel()
-	pileCount, bookCount := 10, 10000
+	pileCount, bookCount := 20, 1000
 	totalBCount := pileCount * bookCount
 	bookPiles := make([]FBookPile, pileCount)
+	t.Logf("Have %d books in total", totalBCount)
 
 	for ix := range bookPiles {
 		pile := newRandomBookPile(bookCount, ix*bookCount)
@@ -48,7 +49,7 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 			capacity:  17,
 			id:        strconv.Itoa(ix),
 			loadBooks: loadBookCh,
-			timeout:   0.5e9,
+			takeDelay: 1e5,
 		}
 
 		bookTaker := NewBookTaker(btParams)
@@ -86,19 +87,16 @@ func Test_BookTakersHavingOddCapacity_ShouldStillLoadAllBooks(t *testing.T) {
 		}
 	}()
 
-	// When
+	/// When
 	for _, taker := range bookTakers {
 		go func(taker BookTaker) {
-			for {
-				pileGroup.Supply(taker)
-				time.Sleep(1e5)
-			}
+			pileGroup.Supply(taker)
 		}(taker)
 	}
 
 	time.Sleep(2e9)
 
-	// Then
+	/// Then
 	allTakenResult := pileGroup.Taken()
 	allTakenMap := make(map[string]int, 0)
 	allTakenCount := 0

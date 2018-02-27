@@ -10,10 +10,9 @@ type BookTaker interface {
 	Capacity() int
 	LoadBooks() chan<- []Burnable
 
-	// Sometimes the BookPile does not have enough Books to fill the taker's load
-	// capacity, so the loading process could hang. This timeout allows us to
-	// cut the loading prematurely.
-	TakeTimeout() time.Duration
+	// This delay is used to space out takes. In the case of book burning, this
+	// delay would be the length of the trip from a book pile to a incinerator.
+	TakeDelay() time.Duration
 
 	UID() string
 }
@@ -23,7 +22,7 @@ type BookTakerParams struct {
 	capacity  int
 	id        string
 	loadBooks chan<- []Burnable
-	timeout   time.Duration
+	takeDelay time.Duration
 }
 
 type bookTaker struct {
@@ -34,12 +33,12 @@ func (bt *bookTaker) Capacity() int {
 	return bt.capacity
 }
 
-func (bt *bookTaker) TakeTimeout() time.Duration {
-	return bt.timeout
-}
-
 func (bt *bookTaker) LoadBooks() chan<- []Burnable {
 	return bt.loadBooks
+}
+
+func (bt *bookTaker) TakeDelay() time.Duration {
+	return bt.takeDelay
 }
 
 func (bt *bookTaker) UID() string {
