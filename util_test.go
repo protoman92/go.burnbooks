@@ -5,6 +5,16 @@ import (
 	"testing"
 )
 
+func totalContribCount(contrib map[string]int) int {
+	count := 0
+
+	for _, value := range contrib {
+		count += value
+	}
+
+	return count
+}
+
 // If the system is written correctly, contributions should not deviate too
 // much from each other.
 func verifyFairContribution(

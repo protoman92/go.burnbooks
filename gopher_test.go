@@ -100,8 +100,11 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 	burnedIDMapLen := len(burnedIDMap)
 	incineratorMap := incineratorGroup.IncineratorContribMap()
 	incineratorMapLen := len(incineratorMap)
+	incineratorBurned := totalContribCount(incineratorMap)
 	providerMap := incineratorGroup.ProviderContribMap()
 	providerMapLen := len(providerMap)
+	supplyPileContribMap := pileGroup.SupplyPileContribMap()
+	supplyProvided := totalContribCount(supplyPileContribMap)
 	takenMap := pileGroup.SupplyTakerContribMap()
 
 	if allBurnedLen != totalBookCount {
@@ -111,6 +114,10 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 			allBurnedLen,
 			totalBookCount-allBurnedLen,
 		)
+	}
+
+	if supplyProvided != incineratorBurned {
+		t.Errorf("Supplied %d and burned %d", supplyProvided, incineratorBurned)
 	}
 
 	if burnedIDMapLen != totalBookCount {

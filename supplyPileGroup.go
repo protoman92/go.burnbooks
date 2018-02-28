@@ -34,7 +34,7 @@ func (spg *supplyPileGroup) SupplyPileContribMap() map[string]int {
 
 	for _, taken := range allTaken {
 		id := taken.PileID
-		contributorMap[id] = contributorMap[id] + 1
+		contributorMap[id] = contributorMap[id] + len(taken.SupplyIds)
 	}
 
 	return contributorMap
