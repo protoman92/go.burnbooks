@@ -4,6 +4,15 @@ package goburnbooks
 type IncineratorGroup interface {
 	Incinerator
 	Burned() []*BurnResult
+
+	// Get the id's of all burned Burnables.
+	BurnedIDMap() map[string]int
+
+	// Get the contributions (i.e. burn count) of each incinerator.
+	IncineratorContribMap() map[string]int
+
+	// Get the contributions (i.e. burnable provision count) of each provider.
+	ProviderContribMap() map[string]int
 }
 
 type incineratorGroup struct {
@@ -14,6 +23,42 @@ type incineratorGroup struct {
 
 func (ig *incineratorGroup) Burned() []*BurnResult {
 	return ig.burned
+}
+
+func (ig *incineratorGroup) BurnedIDMap() map[string]int {
+	allBurned := ig.burned
+	burnedMap := make(map[string]int, 0)
+
+	for _, burned := range allBurned {
+		id := burned.Burned.BurnableID()
+		burnedMap[id] = burnedMap[id] + 1
+	}
+
+	return burnedMap
+}
+
+func (ig *incineratorGroup) IncineratorContribMap() map[string]int {
+	allBurned := ig.burned
+	contributorMap := make(map[string]int, 0)
+
+	for _, burned := range allBurned {
+		id := burned.IncineratorID
+		contributorMap[id] = contributorMap[id] + 1
+	}
+
+	return contributorMap
+}
+
+func (ig *incineratorGroup) ProviderContribMap() map[string]int {
+	allBurned := ig.burned
+	contributorMap := make(map[string]int, 0)
+
+	for _, burned := range allBurned {
+		id := burned.ProviderID
+		contributorMap[id] = contributorMap[id] + 1
+	}
+
+	return contributorMap
 }
 
 func (ig *incineratorGroup) BurnResultChannel() <-chan *BurnResult {

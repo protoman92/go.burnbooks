@@ -1,71 +1,9 @@
-package goburnbooks_test
+package goburnbooks
 
 import (
 	"math"
 	"testing"
-
-	gbb "github.com/protoman92/goburnbooks"
 )
-
-func burnedIDMap(ig gbb.IncineratorGroup) map[string]int {
-	allBurned := ig.Burned()
-	burnedMap := make(map[string]int, 0)
-
-	for _, burned := range allBurned {
-		id := burned.Burned.BurnableID()
-		burnedMap[id] = burnedMap[id] + 1
-	}
-
-	return burnedMap
-}
-
-func supplyPileTakenContribMap(pg gbb.SupplyPileGroup) map[string]int {
-	allTaken := pg.Taken()
-	contributorMap := make(map[string]int, 0)
-
-	for _, taken := range allTaken {
-		id := taken.PileID
-		contributorMap[id] = contributorMap[id] + 1
-	}
-
-	return contributorMap
-}
-
-func supplyTakerTakenContribMap(pg gbb.SupplyPileGroup) map[string]int {
-	allTaken := pg.Taken()
-	contributorMap := make(map[string]int, 0)
-
-	for _, taken := range allTaken {
-		id := taken.TakerID
-		contributorMap[id] = contributorMap[id] + 1
-	}
-
-	return contributorMap
-}
-
-func incineratorBurnedContribMap(ig gbb.IncineratorGroup) map[string]int {
-	allBurned := ig.Burned()
-	contributorMap := make(map[string]int, 0)
-
-	for _, burned := range allBurned {
-		id := burned.IncineratorID
-		contributorMap[id] = contributorMap[id] + 1
-	}
-
-	return contributorMap
-}
-
-func providerBurnedContribMap(ig gbb.IncineratorGroup) map[string]int {
-	allBurned := ig.Burned()
-	contributorMap := make(map[string]int, 0)
-
-	for _, burned := range allBurned {
-		id := burned.ProviderID
-		contributorMap[id] = contributorMap[id] + 1
-	}
-
-	return contributorMap
-}
 
 // If the system is written correctly, contributions should not deviate too
 // much from each other.
@@ -110,23 +48,23 @@ func verifyFairContribution(
 }
 
 func verifySupplyGroupFairContrib(
-	spg gbb.SupplyPileGroup,
+	spg SupplyPileGroup,
 	percentThreshold float64,
 	t *testing.T,
 ) {
-	spContribMap := supplyPileTakenContribMap(spg)
-	takerContribMap := supplyTakerTakenContribMap(spg)
+	spContribMap := spg.SupplyPileContribMap()
+	takerContribMap := spg.SupplyTakerContribMap()
 	verifyFairContribution(spContribMap, percentThreshold, t)
 	verifyFairContribution(takerContribMap, percentThreshold, t)
 }
 
 func verifyIncGroupFairContrib(
-	ig gbb.IncineratorGroup,
+	ig IncineratorGroup,
 	percentThreshold float64,
 	t *testing.T,
 ) {
-	incContribMap := incineratorBurnedContribMap(ig)
-	providerContribMap := providerBurnedContribMap(ig)
+	incContribMap := ig.IncineratorContribMap()
+	providerContribMap := ig.ProviderContribMap()
 	verifyFairContribution(incContribMap, percentThreshold, t)
 	verifyFairContribution(providerContribMap, percentThreshold, t)
 }

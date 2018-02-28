@@ -1,82 +1,80 @@
-package goburnbooks_test
+package goburnbooks
 
 import (
 	"fmt"
 	"strconv"
 	"testing"
 	"time"
-
-	gbb "github.com/protoman92/goburnbooks"
 )
 
 func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 	/// Setup
 	t.Parallel()
-	gophers := make([]gbb.Gopher, gopherCount)
+	gophers := make([]Gopher, gopherCount)
 
 	for ix := range gophers {
-		gParams := &gbb.GopherParams{
-			BurnableProviderRawParams: &gbb.BurnableProviderRawParams{
+		gParams := &GopherParams{
+			BurnableProviderRawParams: &BurnableProviderRawParams{
 				BPID: strconv.Itoa(ix),
 			},
-			SupplyTakerRawParams: &gbb.SupplyTakerRawParams{
+			SupplyTakerRawParams: &SupplyTakerRawParams{
 				Cap:  gopherCapacity,
 				STID: strconv.Itoa(ix),
 			},
-			Logger:       logger,
+			Logger:       logWorker,
 			TakeTimeout:  gopherTakeTimeout,
 			TripDuration: tripDelay,
 		}
 
-		gopher := gbb.NewGopher(gParams)
+		gopher := NewGopher(gParams)
 		gophers[ix] = gopher
 	}
 
 	burnDuration := time.Duration(1)
-	piles := make([]gbb.SupplyPile, supplyPileCount)
-	allBooks := make([]gbb.Book, 0)
+	piles := make([]SupplyPile, supplyPileCount)
+	allBooks := make([]Book, 0)
 	allBookIds := make([]string, 0)
 
 	for ix := range piles {
-		supplies := make([]gbb.Suppliable, supplyPerPileCount)
+		supplies := make([]Suppliable, supplyPerPileCount)
 
 		for jx := range supplies {
 			id := fmt.Sprintf("%d-%d", ix, jx)
-			bParams := &gbb.BookParams{BurnDuration: burnDuration, ID: id}
-			book := gbb.NewBook(bParams)
+			bParams := &BookParams{BurnDuration: burnDuration, ID: id}
+			book := NewBook(bParams)
 			supplies[jx] = book
 			allBooks = append(allBooks, book)
 			allBookIds = append(allBookIds, id)
 		}
 
-		pParams := &gbb.SupplyPileParams{
-			Logger:      logger,
+		pParams := &SupplyPileParams{
+			Logger:      logWorker,
 			Supply:      supplies,
 			ID:          strconv.Itoa(ix),
 			TakeTimeout: supplyPileTimeout,
 		}
 
-		pile := gbb.NewSupplyPile(pParams)
+		pile := NewSupplyPile(pParams)
 		piles[ix] = pile
 	}
 
-	pileGroup := gbb.NewSupplyPileGroup(piles...)
+	pileGroup := NewSupplyPileGroup(piles...)
 
-	incinerators := make([]gbb.Incinerator, incineratorCount)
+	incinerators := make([]Incinerator, incineratorCount)
 
 	for ix := range incinerators {
-		iParams := &gbb.IncineratorParams{
+		iParams := &IncineratorParams{
 			Capacity:    incineratorCap,
 			ID:          strconv.Itoa(ix),
-			Logger:      logger,
+			Logger:      logWorker,
 			MinCapacity: incineratorMinCap,
 		}
 
-		incinerator := gbb.NewIncinerator(iParams)
+		incinerator := NewIncinerator(iParams)
 		incinerators[ix] = incinerator
 	}
 
-	incineratorGroup := gbb.NewIncineratorGroup(incinerators...)
+	incineratorGroup := NewIncineratorGroup(incinerators...)
 	totalBookCount := len(allBookIds)
 
 	/// When
@@ -90,19 +88,19 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 	/// Then
 	verifySupplyGroupFairContrib(pileGroup, contribPercentThreshold, t)
 	verifyIncGroupFairContrib(incineratorGroup, contribPercentThreshold, t)
-	allBookIdLen := len(allBookIds)
+	allBookIDLen := len(allBookIds)
 
-	if allBookIdLen != totalSupplyCount {
-		t.Errorf("Should have %d books, but got %d", totalSupplyCount, allBookIdLen)
+	if allBookIDLen != totalSupplyCount {
+		t.Errorf("Should have %d books, but got %d", totalSupplyCount, allBookIDLen)
 	}
 
 	allBurned := incineratorGroup.Burned()
 	allBurnedLen := len(allBurned)
-	burnedIDMap := burnedIDMap(incineratorGroup)
+	burnedIDMap := incineratorGroup.BurnedIDMap()
 	burnedIDMapLen := len(burnedIDMap)
-	incineratorMap := incineratorBurnedContribMap(incineratorGroup)
+	incineratorMap := incineratorGroup.IncineratorContribMap()
 	incineratorMapLen := len(incineratorMap)
-	providerMap := providerBurnedContribMap(incineratorGroup)
+	providerMap := incineratorGroup.ProviderContribMap()
 	providerMapLen := len(providerMap)
 
 	if allBurnedLen != totalBookCount {

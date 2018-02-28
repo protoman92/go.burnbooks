@@ -1,56 +1,54 @@
-package goburnbooks_test
+package goburnbooks
 
 import (
 	"sort"
 	"strconv"
 	"testing"
 	"time"
-
-	gbb "github.com/protoman92/goburnbooks"
 )
 
-func newRandomSupplyPile(count int, offset int) gbb.SupplyPile {
-	books := make([]gbb.Suppliable, count)
+func newRandomSupplyPile(count int, offset int) SupplyPile {
+	books := make([]Suppliable, count)
 
 	for i := 0; i < count; i++ {
 		id := offset + i
-		params := &gbb.BookParams{BurnDuration: 0, ID: strconv.Itoa(id)}
-		books[i] = gbb.NewBook(params)
+		params := &BookParams{BurnDuration: 0, ID: strconv.Itoa(id)}
+		books[i] = NewBook(params)
 	}
 
-	bookParams := &gbb.SupplyPileParams{
-		Logger:      logger,
+	bookParams := &SupplyPileParams{
+		Logger:      logWorker,
 		Supply:      books,
 		TakeTimeout: supplyPileTimeout,
 	}
 
-	return gbb.NewSupplyPile(bookParams)
+	return NewSupplyPile(bookParams)
 }
 
 func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 	/// Setup
 	t.Parallel()
-	supplyPiles := make([]gbb.SupplyPile, supplyPileCount)
+	supplyPiles := make([]SupplyPile, supplyPileCount)
 
 	for ix := range supplyPiles {
 		pile := newRandomSupplyPile(supplyPerPileCount, ix*supplyPerPileCount)
 		supplyPiles[ix] = pile
 	}
 
-	pileGroup := gbb.NewSupplyPileGroup(supplyPiles...)
-	supplyTakers := make([]gbb.SupplyTaker, supplyTakerCount)
-	supplyChs := make([]chan []gbb.Suppliable, supplyTakerCount)
+	pileGroup := NewSupplyPileGroup(supplyPiles...)
+	supplyTakers := make([]SupplyTaker, supplyTakerCount)
+	supplyChs := make([]chan []Suppliable, supplyTakerCount)
 
 	for ix := range supplyTakers {
-		loadSupplyCh := make(chan []gbb.Suppliable)
+		loadSupplyCh := make(chan []Suppliable)
 		readyCh := make(chan interface{})
 
-		stRawParams := &gbb.SupplyTakerRawParams{
+		stRawParams := &SupplyTakerRawParams{
 			Cap:  13,
 			STID: strconv.Itoa(ix),
 		}
 
-		stParams := &gbb.SupplyTakerParams{
+		stParams := &SupplyTakerParams{
 			SupplyTakerRawParams: stRawParams,
 			LoadCh:               loadSupplyCh,
 			TakeReadyCh:          readyCh,
@@ -67,17 +65,17 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 			}
 		}()
 
-		supply := gbb.NewSupplyTaker(stParams)
+		supply := NewSupplyTaker(stParams)
 		supplyTakers[ix] = supply
 		supplyChs[ix] = loadSupplyCh
 	}
 
 	// This ensures that loaded supplies are unique.
-	loadedSupplies := make(map[gbb.Suppliable]int, 0)
-	updateLoaded := make(chan []gbb.Suppliable)
+	loadedSupplies := make(map[Suppliable]int, 0)
+	updateLoaded := make(chan []Suppliable)
 
 	for _, ch := range supplyChs {
-		go func(ch chan []gbb.Suppliable) {
+		go func(ch chan []Suppliable) {
 			for {
 				select {
 				case burnables := <-ch:
@@ -104,7 +102,7 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 
 	/// When
 	for _, taker := range supplyTakers {
-		go func(taker gbb.SupplyTaker) {
+		go func(taker SupplyTaker) {
 			pileGroup.Supply(taker)
 		}(taker)
 	}

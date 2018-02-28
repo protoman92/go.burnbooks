@@ -1,46 +1,44 @@
-package goburnbooks_test
+package goburnbooks
 
 import (
 	"fmt"
 	"strconv"
 	"testing"
 	"time"
-
-	gbb "github.com/protoman92/goburnbooks"
 )
 
 type testParams struct {
 	burnDuration time.Duration
 }
 
-func newBurnables(params testParams, pref1 string, pref2 string) []gbb.Burnable {
-	burnables := make([]gbb.Burnable, burnableCountPerRound)
+func newBurnables(params testParams, pref1 string, pref2 string) []Burnable {
+	burnables := make([]Burnable, burnableCountPerRound)
 
 	for ix := range burnables {
-		bParams := &gbb.BookParams{
+		bParams := &BookParams{
 			BurnDuration: params.burnDuration,
 			ID:           fmt.Sprintf("%s-%s-%d", pref1, pref2, ix),
 		}
 
-		burnable := gbb.NewBook(bParams)
+		burnable := NewBook(bParams)
 		burnables[ix] = burnable
 	}
 
 	return burnables
 }
 
-func incinerate(ig gbb.IncineratorGroup, params testParams) {
+func incinerate(ig IncineratorGroup, params testParams) {
 	for i := 0; i < providerCount; i++ {
-		provideCh := make(chan []gbb.Burnable)
-		prRawParams := &gbb.BurnableProviderRawParams{BPID: strconv.Itoa(i)}
+		provideCh := make(chan []Burnable)
+		prRawParams := &BurnableProviderRawParams{BPID: strconv.Itoa(i)}
 
-		prParams := &gbb.BurnableProviderParams{
+		prParams := &BurnableProviderParams{
 			BurnableProviderRawParams: prRawParams,
 			ProvideCh:                 provideCh,
 			ConsumeReadyCh:            make(chan interface{}, 1),
 		}
 
-		provider := gbb.NewBurnableProvider(prParams)
+		provider := NewBurnableProvider(prParams)
 
 		go func(ix int) {
 			for j := 0; j < burnRounds; j++ {
@@ -60,15 +58,15 @@ func Test_BurnMultiple_ShouldEventuallyBurnAll(t *testing.T) {
 	/// Setup
 	t.Parallel()
 
-	iParams := &gbb.IncineratorParams{
+	iParams := &IncineratorParams{
 		Capacity:    incineratorCap,
 		ID:          "1",
-		Logger:      logger,
+		Logger:      logWorker,
 		MinCapacity: incineratorMinCap,
 	}
 
-	incinerator := gbb.NewIncinerator(iParams)
-	ig := gbb.NewIncineratorGroup(incinerator)
+	incinerator := NewIncinerator(iParams)
+	ig := NewIncineratorGroup(incinerator)
 
 	/// When
 	incinerate(ig, testParams{burnDuration: 1e5})
@@ -77,7 +75,7 @@ func Test_BurnMultiple_ShouldEventuallyBurnAll(t *testing.T) {
 	verifyIncGroupFairContrib(ig, contribPercentThreshold, t)
 	allBurned := ig.Burned()
 	allBurnedLen := len(allBurned)
-	burnedMap := burnedIDMap(ig)
+	burnedMap := ig.BurnedIDMap()
 	burnedMapLen := len(burnedMap)
 
 	if allBurnedLen != totalBurnCount {
@@ -99,15 +97,15 @@ func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 	/// Setup
 	t.Parallel()
 
-	iParams := &gbb.IncineratorParams{
+	iParams := &IncineratorParams{
 		Capacity:    incineratorCap,
 		ID:          "1",
-		Logger:      logger,
+		Logger:      logWorker,
 		MinCapacity: incineratorMinCap,
 	}
 
-	incinerator := gbb.NewIncinerator(iParams)
-	ig := gbb.NewIncineratorGroup(incinerator)
+	incinerator := NewIncinerator(iParams)
+	ig := NewIncineratorGroup(incinerator)
 
 	/// When
 	// Unrealistic burn duration to represent blocking operation.
@@ -125,31 +123,31 @@ func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 	/// Setup
 	t.Parallel()
-	allIncs := make([]gbb.Incinerator, incineratorCount)
+	allIncs := make([]Incinerator, incineratorCount)
 
 	for ix := range allIncs {
 		id := strconv.Itoa(ix)
 
-		iParams := &gbb.IncineratorParams{
+		iParams := &IncineratorParams{
 			Capacity:    incineratorCap,
 			ID:          id,
-			Logger:      logger,
+			Logger:      logWorker,
 			MinCapacity: incineratorMinCap,
 		}
 
-		allIncs[ix] = gbb.NewIncinerator(iParams)
+		allIncs[ix] = NewIncinerator(iParams)
 	}
 
-	ig := gbb.NewIncineratorGroup(allIncs...)
+	ig := NewIncineratorGroup(allIncs...)
 
 	/// When
 	incinerate(ig, testParams{burnDuration: 1e5})
 
 	/// Then
 	verifyIncGroupFairContrib(ig, contribPercentThreshold, t)
-	burnIdMap := burnedIDMap(ig)
-	burnedIdMapLen := len(burnIdMap)
-	incineratorMap := incineratorBurnedContribMap(ig)
+	burnIDMap := ig.BurnedIDMap()
+	burnedIDMapLen := len(burnIDMap)
+	incineratorMap := ig.IncineratorContribMap()
 	incineratorMapLen := len(incineratorMap)
 
 	if incineratorMapLen != incineratorCount {
@@ -166,7 +164,7 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 		}
 	}
 
-	if burnedIdMapLen != totalBurnCount {
-		t.Errorf("Should have burned %d, but got %d", totalBurnCount, burnedIdMapLen)
+	if burnedIDMapLen != totalBurnCount {
+		t.Errorf("Should have burned %d, but got %d", totalBurnCount, burnedIDMapLen)
 	}
 }

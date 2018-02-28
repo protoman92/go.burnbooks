@@ -1,9 +1,7 @@
-package goburnbooks_test
+package goburnbooks
 
 import (
 	"time"
-
-	gbb "github.com/protoman92/goburnbooks"
 )
 
 const (
@@ -35,5 +33,5 @@ const (
 )
 
 var (
-	logger = gbb.NewLogger(false)
+	logWorker = NewLogger(false)
 )
