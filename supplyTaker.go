@@ -6,7 +6,7 @@ import (
 
 // SupplyTaker represents a worker that takes Suppliables for some purposes.
 type SupplyTaker interface {
-	Capacity() int
+	Capacity() uint
 	LoadChannel() chan<- []Suppliable
 	SupplyTakerID() string
 	TakeReadyChannel() <-chan interface{}
@@ -15,7 +15,7 @@ type SupplyTaker interface {
 // SupplyTakerRawParams represents only the immutable parameters used to build
 // a taker.
 type SupplyTakerRawParams struct {
-	Cap  int
+	Cap  uint
 	STID string
 }
 
@@ -30,7 +30,7 @@ type supplyTaker struct {
 	*SupplyTakerParams
 }
 
-func (bt *supplyTaker) Capacity() int {
+func (bt *supplyTaker) Capacity() uint {
 	return bt.Cap
 }
 

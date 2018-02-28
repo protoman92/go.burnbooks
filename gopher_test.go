@@ -32,7 +32,7 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 	}
 
 	burnDuration := time.Duration(1)
-	piles := make([]gbb.FSupplyPile, supplyPileCount)
+	piles := make([]gbb.SupplyPile, supplyPileCount)
 	allBooks := make([]gbb.Book, 0)
 	allBookIds := make([]string, 0)
 
@@ -61,7 +61,7 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 
 	pileGroup := gbb.NewSupplyPileGroup(piles...)
 
-	incinerators := make([]gbb.FIncinerator, incineratorCount)
+	incinerators := make([]gbb.Incinerator, incineratorCount)
 
 	for ix := range incinerators {
 		iParams := &gbb.IncineratorParams{

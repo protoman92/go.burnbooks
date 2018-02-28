@@ -6,25 +6,20 @@ import (
 
 // Incinerator represents something that can burn a Burnable.
 type Incinerator interface {
+	BurnResultChannel() <-chan *BurnResult
 	Consume(provider BurnableProvider)
+	UID() string
 }
 
 // IncineratorParams represents the required parameters to set up an incinerator.
 type IncineratorParams struct {
-	Capacity int
+	Capacity uint
 	Logger   Logger
 	ID       string
 
 	// This represents the minimum capacity required before this incinerator can
 	// signal availability.
-	MinCapacity int
-}
-
-// FIncinerator represents an incinerator that has all functionalities.
-type FIncinerator interface {
-	Incinerator
-	BurnResult() <-chan *BurnResult
-	UID() string
+	MinCapacity uint
 }
 
 type incinerator struct {
@@ -36,7 +31,7 @@ func (i *incinerator) String() string {
 	return fmt.Sprintf("Incinerator %s", i.ID)
 }
 
-func (i *incinerator) BurnResult() <-chan *BurnResult {
+func (i *incinerator) BurnResultChannel() <-chan *BurnResult {
 	return i.burnResult
 }
 
@@ -70,9 +65,9 @@ func (i *incinerator) Consume(provider BurnableProvider) {
 				logger.Printf("%v received %d burnables", i, len(burnables))
 				provideCh = nil
 				addProcessed := make(chan interface{})
-				batchCount := len(burnables)
+				batchCount := uint(len(burnables))
 				enoughProcessedCh = make(chan interface{}, 1)
-				processedCount := 0
+				processedCount := uint(0)
 
 				if batchCount == 0 {
 					enoughProcessedCh <- true
@@ -144,11 +139,22 @@ func (i *incinerator) UID() string {
 // NewIncinerator creates a new incinerator with a specified pending channel
 // and capacity. The capacity determines how many Burnables can be burned at any
 // given point in time.
-func NewIncinerator(params *IncineratorParams) FIncinerator {
-	incinerator := &incinerator{
+func NewIncinerator(params *IncineratorParams) Incinerator {
+	i := &incinerator{
 		IncineratorParams: params,
 		burnResult:        make(chan *BurnResult),
 	}
 
-	return incinerator
+	if i.Capacity < i.MinCapacity {
+		err := fmt.Sprintf(
+			"%v has capacity %d less than min capacity %d",
+			i,
+			i.Capacity,
+			i.MinCapacity,
+		)
+
+		panic(err)
+	}
+
+	return i
 }

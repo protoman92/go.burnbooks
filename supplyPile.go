@@ -8,6 +8,7 @@ import (
 // SupplyPile represents a pile of Suppliables.
 type SupplyPile interface {
 	Supply(taker SupplyTaker)
+	TakeResultChannel() <-chan *SupplyTakeResult
 }
 
 // SupplyPileParams represents the required parameters to build a SupplyPile.
@@ -21,12 +22,6 @@ type SupplyPileParams struct {
 	Supply      []Suppliable
 	ID          string
 	TakeTimeout time.Duration
-}
-
-// FSupplyPile represents a pile of SupplyPiles with all functionalities.
-type FSupplyPile interface {
-	SupplyPile
-	TakeResultChannel() <-chan *SupplyTakeResult
 }
 
 type supplyPile struct {
@@ -80,7 +75,7 @@ func (sp *supplyPile) Supply(taker SupplyTaker) {
 			case supply := <-supplyCh:
 				loaded = append(loaded, supply)
 
-				if len(loaded) == capacity {
+				if uint(len(loaded)) == capacity {
 					logger.Printf("%v supplied to full cap for %v", sp, taker)
 					supplyCh = nil
 					supplyTimeoutCh = nil
@@ -154,7 +149,7 @@ func (sp *supplyPile) TakeResultChannel() <-chan *SupplyTakeResult {
 }
 
 // NewSupplyPile creates a new SupplyPile.
-func NewSupplyPile(params *SupplyPileParams) FSupplyPile {
+func NewSupplyPile(params *SupplyPileParams) SupplyPile {
 	supplies := params.Supply
 	supplyCh := make(chan Suppliable, len(supplies))
 

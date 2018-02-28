@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func newRandomSupplyPile(count int, offset int) gbb.FSupplyPile {
+func newRandomSupplyPile(count int, offset int) gbb.SupplyPile {
 	books := make([]gbb.Suppliable, count)
 
 	for i := 0; i < count; i++ {
@@ -29,7 +29,7 @@ func newRandomSupplyPile(count int, offset int) gbb.FSupplyPile {
 func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 	/// Setup
 	t.Parallel()
-	supplyPiles := make([]gbb.FSupplyPile, supplyPileCount)
+	supplyPiles := make([]gbb.SupplyPile, supplyPileCount)
 
 	for ix := range supplyPiles {
 		pile := newRandomSupplyPile(supplyPerPileCount, ix*supplyPerPileCount)

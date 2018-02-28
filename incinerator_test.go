@@ -124,7 +124,7 @@ func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 	/// Setup
 	t.Parallel()
-	allIncs := make([]gbb.FIncinerator, incineratorCount)
+	allIncs := make([]gbb.Incinerator, incineratorCount)
 
 	for ix := range allIncs {
 		id := strconv.Itoa(ix)

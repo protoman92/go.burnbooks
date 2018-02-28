@@ -8,11 +8,16 @@ type IncineratorGroup interface {
 
 type incineratorGroup struct {
 	burned       []*BurnResult
-	incinerators []FIncinerator
+	burnResultCh chan *BurnResult
+	incinerators []Incinerator
 }
 
 func (ig *incineratorGroup) Burned() []*BurnResult {
 	return ig.burned
+}
+
+func (ig *incineratorGroup) BurnResultChannel() <-chan *BurnResult {
+	return ig.burnResultCh
 }
 
 func (ig *incineratorGroup) Consume(provider BurnableProvider) {
@@ -21,13 +26,23 @@ func (ig *incineratorGroup) Consume(provider BurnableProvider) {
 	}
 }
 
+func (ig *incineratorGroup) UID() string {
+	var id string
+
+	for _, i := range ig.incinerators {
+		id += id + "-" + i.UID()
+	}
+
+	return id
+}
+
 // Loop each incinerator to fetch burned updates.
 func (ig *incineratorGroup) loopBurn() {
 	updateAllBurnedCh := make(chan *BurnResult)
 
 	for _, i := range ig.incinerators {
-		go func(i FIncinerator) {
-			var burnResultCh = i.BurnResult()
+		go func(i Incinerator) {
+			var burnResultCh = i.BurnResultChannel()
 			var burnResult *BurnResult
 			var updateBurnedCh chan<- *BurnResult
 
@@ -47,7 +62,7 @@ func (ig *incineratorGroup) loopBurn() {
 				case updateBurnedCh <- burnResult:
 					burnResult = nil
 					updateBurnedCh = nil
-					burnResultCh = i.BurnResult()
+					burnResultCh = i.BurnResultChannel()
 				}
 			}
 		}(i)
@@ -58,6 +73,10 @@ func (ig *incineratorGroup) loopBurn() {
 			select {
 			case burned := <-updateAllBurnedCh:
 				ig.burned = append(ig.burned, burned)
+
+				go func() {
+					ig.burnResultCh <- burned
+				}()
 			}
 		}
 	}()
@@ -67,9 +86,10 @@ func (ig *incineratorGroup) loopBurn() {
 // incinerators. An incinerator group implements the same functionalities as
 // an incinerator, so we can access them directly instead of viewing individual
 // incinerators.
-func NewIncineratorGroup(incinerators ...FIncinerator) IncineratorGroup {
+func NewIncineratorGroup(incinerators ...Incinerator) IncineratorGroup {
 	ig := &incineratorGroup{
 		burned:       make([]*BurnResult, 0),
+		burnResultCh: make(chan *BurnResult),
 		incinerators: incinerators,
 	}
 
