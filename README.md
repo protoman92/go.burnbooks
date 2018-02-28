@@ -1,6 +1,7 @@
 # goburnbooks
 
 [![Build Status](https://travis-ci.org/protoman92/goburnbooks.svg?branch=master)](https://travis-ci.org/protoman92/goburnbooks)
+[![Coverage Status](https://coveralls.io/repos/github/protoman92/goburnbooks/badge.svg?branch=master)](https://coveralls.io/github/protoman92/goburnbooks?branch=master)
 
 I was watching a presentation by **Rob Pike** (**Concurrency is not parallelism:** <https://vimeo.com/49718712>), and he mentioned the problem of book-burning gophers, whereby there are variable number of book piles/gophers/incinerators and the gophers are responsible for bringing books to the incinerators. Since I'm picking up Golang, might as well build some novice concurrency system just for fun.
 
