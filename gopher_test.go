@@ -2,10 +2,11 @@ package goburnbooks_test
 
 import (
 	"fmt"
-	gbb "goburnbooks"
 	"strconv"
 	"testing"
 	"time"
+
+	gbb "github.com/protoman92/goburnbooks"
 )
 
 func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {

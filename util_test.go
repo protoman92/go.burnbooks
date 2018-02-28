@@ -1,9 +1,10 @@
 package goburnbooks_test
 
 import (
-	gbb "goburnbooks"
 	"math"
 	"testing"
+
+	gbb "github.com/protoman92/goburnbooks"
 )
 
 func burnedIDMap(ig gbb.IncineratorGroup) map[string]int {

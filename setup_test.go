@@ -1,8 +1,9 @@
 package goburnbooks_test
 
 import (
-	gbb "goburnbooks"
 	"time"
+
+	gbb "github.com/protoman92/goburnbooks"
 )
 
 const (

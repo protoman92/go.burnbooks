@@ -1,11 +1,12 @@
 package goburnbooks_test
 
 import (
-	gbb "goburnbooks"
 	"sort"
 	"strconv"
 	"testing"
 	"time"
+
+	gbb "github.com/protoman92/goburnbooks"
 )
 
 func newRandomSupplyPile(count int, offset int) gbb.SupplyPile {
