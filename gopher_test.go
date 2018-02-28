@@ -102,6 +102,7 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 	incineratorMapLen := len(incineratorMap)
 	providerMap := incineratorGroup.ProviderContribMap()
 	providerMapLen := len(providerMap)
+	takenMap := pileGroup.SupplyTakerContribMap()
 
 	if allBurnedLen != totalBookCount {
 		t.Errorf(
@@ -126,5 +127,14 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 
 	if providerMapLen != gopherCount {
 		t.Errorf("Should have %d gophers, but got %d", gopherCount, providerMapLen)
+	}
+
+	for key := range burnedIDMap {
+		taken := takenMap[key]
+		provided := providerMap[key]
+
+		if taken != provided {
+			t.Errorf("Taken %d is different from provided %d", taken, provided)
+		}
 	}
 }
