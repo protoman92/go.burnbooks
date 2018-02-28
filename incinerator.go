@@ -1,5 +1,9 @@
 package goburnbooks
 
+import (
+	"fmt"
+)
+
 // Incinerator represents something that can burn a Burnable.
 type Incinerator interface {
 	Consume(provider BurnableProvider)
@@ -8,6 +12,7 @@ type Incinerator interface {
 // IncineratorParams represents the required parameters to set up an incinerator.
 type IncineratorParams struct {
 	Capacity int
+	Logger   Logger
 	ID       string
 
 	// This represents the minimum capacity required before this incinerator can
@@ -27,6 +32,10 @@ type incinerator struct {
 	burnResult chan *BurnResult
 }
 
+func (i *incinerator) String() string {
+	return fmt.Sprintf("Incinerator %s", i.ID)
+}
+
 func (i *incinerator) BurnResult() <-chan *BurnResult {
 	return i.burnResult
 }
@@ -36,6 +45,8 @@ func (i *incinerator) Consume(provider BurnableProvider) {
 		capacity := i.Capacity
 		burning := make(chan interface{}, capacity)
 		burnResult := i.burnResult
+		logger := i.Logger
+		providerID := provider.BurnableProviderID()
 		var provideCh = provider.ProvideChannel()
 		var readyCh chan<- interface{}
 
@@ -56,11 +67,17 @@ func (i *incinerator) Consume(provider BurnableProvider) {
 			select {
 			case burnables := <-provideCh:
 				// Nullify the provide channel to let the sequence run in peace.
+				logger.Printf("%v received %d burnables", i, len(burnables))
 				provideCh = nil
 				addProcessed := make(chan interface{})
 				batchCount := len(burnables)
-				enoughProcessedCh = make(chan interface{})
+				enoughProcessedCh = make(chan interface{}, 1)
 				processedCount := 0
+
+				if batchCount == 0 {
+					enoughProcessedCh <- true
+					break
+				}
 
 				go func() {
 					for {
@@ -95,12 +112,18 @@ func (i *incinerator) Consume(provider BurnableProvider) {
 							addProcessed <- true
 						}()
 
-						result := &BurnResult{Burned: burnable, IncineratorID: i.ID}
+						result := &BurnResult{
+							Burned:        burnable,
+							IncineratorID: i.ID,
+							ProviderID:    providerID,
+						}
+
 						burnResult <- result
 					}(burnable)
 				}
 
 			case <-enoughProcessedCh:
+				logger.Printf("%v has burned enough, signalling ready", i)
 				enoughProcessedCh = nil
 				readyCh = provider.ConsumeReadyChannel()
 

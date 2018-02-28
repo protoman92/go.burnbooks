@@ -1,6 +1,7 @@
 package goburnbooks
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -21,7 +22,7 @@ type book struct {
 }
 
 func (b *book) String() string {
-	return b.ID
+	return fmt.Sprintf("Book %s", b.ID)
 }
 
 func (b *book) BurnableID() string {
@@ -33,7 +34,6 @@ func (b *book) SuppliableID() string {
 }
 
 func (b *book) Burn() {
-	// fmt.Printf("Burning %v\n", b)
 	time.Sleep(b.BurnDuration)
 }
 

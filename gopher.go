@@ -1,6 +1,7 @@
 package goburnbooks
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -14,6 +15,8 @@ type Gopher interface {
 type GopherParams struct {
 	*BurnableProviderRawParams
 	*SupplyTakerRawParams
+	Logger       Logger
+	TakeTimeout  time.Duration
 	TripDuration time.Duration
 }
 
@@ -28,15 +31,18 @@ type gopher struct {
 }
 
 func (g *gopher) String() string {
-	return g.BPID
+	return fmt.Sprintf("Gopher %s", g.BPID)
 }
 
 func (g *gopher) loopWork() {
+	logger := g.Logger
+	resetSequenceCh := make(chan interface{}, 1)
 	takeReadyCh := g.stTakeReadyCh
 	var burnables []Burnable
 	var burnableProvideCh chan []Burnable
 	var consumeReadyCh chan interface{}
 	var supplyLoadCh chan []Suppliable
+	var takeTimeoutCh <-chan time.Time
 
 	for {
 		// The sequence of work is as follows:
@@ -47,22 +53,36 @@ func (g *gopher) loopWork() {
 		// Burnables from said supplies, then sleep for a while to simulate trip
 		// duration. Afterwards, initialize the provide channel to feed Burnables
 		// downstream.
+		// - Alternatively, if the supply did not arrive on time, hit the time out
+		// and send a reset request.
 		// - Once the Burnables have been fed downstream, nullify the Burnables
 		// and provide channel and initialize the consume ready channel to wait
 		// for availability signal.
-		// - Once availability signal is retrieved, nullify the consume ready
-		// channel and reinstate the take ready channel to wait for the next batch.
+		// - Once availability signal is retrieved, nullify the consume ready and
+		// send a reset signal.
+		// - Finally, reinstate the take ready channel to wait for the next batch.
 		//
 		select {
 		case takeReadyCh <- true:
 			takeReadyCh = nil
 			supplyLoadCh = g.stLoadCh
+			takeTimeoutCh = time.After(g.TakeTimeout)
 
+		// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 		case supplies := <-supplyLoadCh:
+			logger.Printf("%v received %d supplies", g, len(supplies))
 			supplyLoadCh = nil
+			takeTimeoutCh = nil
 			burnables = ExtractBurnablesFromSuppliables(supplies...)
 			time.Sleep(g.TripDuration)
 			burnableProvideCh = g.bpProvideCh
+
+		case <-takeTimeoutCh:
+			logger.Printf("%v timed out!", g)
+			takeTimeoutCh = nil
+			supplyLoadCh = nil
+			resetSequenceCh <- true
+		// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 		case burnableProvideCh <- burnables:
 			burnableProvideCh = nil
@@ -71,6 +91,9 @@ func (g *gopher) loopWork() {
 
 		case <-consumeReadyCh:
 			consumeReadyCh = nil
+			resetSequenceCh <- true
+
+		case <-resetSequenceCh:
 			takeReadyCh = g.stTakeReadyCh
 		}
 	}
@@ -81,9 +104,9 @@ func NewGopher(params *GopherParams) Gopher {
 	bpRawParams := params.BurnableProviderRawParams
 	stRawParams := params.SupplyTakerRawParams
 	bpConsumeReadyCh := make(chan interface{})
-	bpProvideCh := make(chan []Burnable, 1)
+	bpProvideCh := make(chan []Burnable)
 	stLoadCh := make(chan []Suppliable)
-	stTakeReadyCh := make(chan interface{}, 1)
+	stTakeReadyCh := make(chan interface{})
 
 	gp := &gopher{
 		BurnableProvider: NewBurnableProvider(&BurnableProviderParams{

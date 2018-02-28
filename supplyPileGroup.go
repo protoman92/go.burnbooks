@@ -11,21 +11,21 @@ type supplyPileGroup struct {
 	taken       []*SupplyTakeResult
 }
 
-func (bpg *supplyPileGroup) Supply(taker SupplyTaker) {
-	for _, pile := range bpg.supplyPiles {
+func (spg *supplyPileGroup) Supply(taker SupplyTaker) {
+	for _, pile := range spg.supplyPiles {
 		go pile.Supply(taker)
 	}
 }
 
-func (bpg *supplyPileGroup) Taken() []*SupplyTakeResult {
-	return bpg.taken
+func (spg *supplyPileGroup) Taken() []*SupplyTakeResult {
+	return spg.taken
 }
 
 // Loop supply to store available piles and take results.
-func (bpg *supplyPileGroup) loopSupply() {
+func (spg *supplyPileGroup) loopSupply() {
 	updateTaken := make(chan *SupplyTakeResult)
 
-	for _, pile := range bpg.supplyPiles {
+	for _, pile := range spg.supplyPiles {
 		go func(pile FSupplyPile) {
 			takenResult := pile.TakeResultChannel()
 
@@ -44,7 +44,7 @@ func (bpg *supplyPileGroup) loopSupply() {
 		for {
 			select {
 			case update := <-updateTaken:
-				bpg.taken = append(bpg.taken, update)
+				spg.taken = append(spg.taken, update)
 			}
 		}
 	}()

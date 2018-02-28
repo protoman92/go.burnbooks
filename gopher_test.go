@@ -10,6 +10,7 @@ import (
 
 func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 	/// Setup
+	t.Parallel()
 	gophers := make([]gbb.Gopher, gopherCount)
 
 	for ix := range gophers {
@@ -21,6 +22,8 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 				Cap:  gopherCapacity,
 				STID: strconv.Itoa(ix),
 			},
+			Logger:       logger,
+			TakeTimeout:  gopherTakeTimeout,
 			TripDuration: tripDelay,
 		}
 
@@ -45,7 +48,13 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 			allBookIds = append(allBookIds, id)
 		}
 
-		pParams := &gbb.SupplyPileParams{Supply: supplies, ID: strconv.Itoa(ix)}
+		pParams := &gbb.SupplyPileParams{
+			Logger:      logger,
+			Supply:      supplies,
+			ID:          strconv.Itoa(ix),
+			TakeTimeout: supplyPileTimeout,
+		}
+
 		pile := gbb.NewSupplyPile(pParams)
 		piles[ix] = pile
 	}
@@ -58,7 +67,8 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 		iParams := &gbb.IncineratorParams{
 			Capacity:    incineratorCap,
 			ID:          strconv.Itoa(ix),
-			MinCapacity: minIncineratorCapacity,
+			Logger:      logger,
+			MinCapacity: incineratorMinCap,
 		}
 
 		incinerator := gbb.NewIncinerator(iParams)
@@ -67,22 +77,18 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 
 	incineratorGroup := gbb.NewIncineratorGroup(incinerators...)
 	totalBookCount := len(allBookIds)
-	t.Logf("Got %d piles of books", len(piles))
-	t.Logf("Got %d gophers to deliver books", len(gophers))
-	t.Logf("Got %d incinerators", len(incinerators))
-	t.Logf("Got %d books to burn", totalBookCount)
 
 	/// When
 	for _, gopher := range gophers {
 		go pileGroup.Supply(gopher)
-		t.Logf("Supplying to gopher %v", gopher)
 		go incineratorGroup.Consume(gopher)
-		t.Logf("Consuming from gopher %v", gopher)
 	}
 
-	time.Sleep(waitDuration)
+	time.Sleep(integrationWaitDuration)
 
 	/// Then
+	verifySupplyGroupFairContrib(pileGroup, contribPercentThreshold, t)
+	verifyIncGroupFairContrib(incineratorGroup, contribPercentThreshold, t)
 	allBookIdLen := len(allBookIds)
 
 	if allBookIdLen != totalSupplyCount {
@@ -91,8 +97,12 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 
 	allBurned := incineratorGroup.Burned()
 	allBurnedLen := len(allBurned)
-	contributorMap := burnContributorMap(incineratorGroup)
-	contributorMapLen := len(contributorMap)
+	burnedIDMap := burnedIDMap(incineratorGroup)
+	burnedIDMapLen := len(burnedIDMap)
+	incineratorMap := incineratorBurnedContribMap(incineratorGroup)
+	incineratorMapLen := len(incineratorMap)
+	providerMap := providerBurnedContribMap(incineratorGroup)
+	providerMapLen := len(providerMap)
 
 	if allBurnedLen != totalBookCount {
 		t.Errorf(
@@ -103,15 +113,19 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 		)
 	}
 
-	for key, value := range contributorMap {
-		t.Logf("Gopher %s burned %d books\n", key, value)
+	if burnedIDMapLen != totalBookCount {
+		t.Errorf("Should have burned %d, but got %d", totalBookCount, burnedIDMapLen)
 	}
 
-	if contributorMapLen != gopherCount {
+	if incineratorMapLen != incineratorCount {
 		t.Errorf(
-			"Should have had %d gophers, but got %d",
-			gopherCount,
-			contributorMapLen,
+			"Should have %d incinerators, but got %d",
+			incineratorCount,
+			incineratorMapLen,
 		)
+	}
+
+	if providerMapLen != gopherCount {
+		t.Errorf("Should have %d gophers, but got %d", gopherCount, providerMapLen)
 	}
 }

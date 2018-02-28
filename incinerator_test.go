@@ -62,7 +62,8 @@ func Test_BurnMultiple_ShouldEventuallyBurnAll(t *testing.T) {
 	iParams := &gbb.IncineratorParams{
 		Capacity:    incineratorCap,
 		ID:          "1",
-		MinCapacity: minIncineratorCapacity,
+		Logger:      logger,
+		MinCapacity: incineratorMinCap,
 	}
 
 	incinerator := gbb.NewIncinerator(iParams)
@@ -72,6 +73,7 @@ func Test_BurnMultiple_ShouldEventuallyBurnAll(t *testing.T) {
 	incinerate(ig, testParams{burnDuration: 1e5})
 
 	// Then
+	verifyIncGroupFairContrib(ig, contribPercentThreshold, t)
 	allBurned := ig.Burned()
 	allBurnedLen := len(allBurned)
 	burnedMap := burnedIDMap(ig)
@@ -99,7 +101,8 @@ func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 	iParams := &gbb.IncineratorParams{
 		Capacity:    incineratorCap,
 		ID:          "1",
-		MinCapacity: minIncineratorCapacity,
+		Logger:      logger,
+		MinCapacity: incineratorMinCap,
 	}
 
 	incinerator := gbb.NewIncinerator(iParams)
@@ -110,6 +113,7 @@ func Test_BurnMultiple_ShouldCapAtSpecifiedCapacity(t *testing.T) {
 	incinerate(ig, testParams{burnDuration: 1e15})
 
 	/// Then
+	verifyIncGroupFairContrib(ig, contribPercentThreshold, t)
 	burnedLength := len(ig.Burned())
 
 	if burnedLength != 0 {
@@ -128,7 +132,8 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 		iParams := &gbb.IncineratorParams{
 			Capacity:    incineratorCap,
 			ID:          id,
-			MinCapacity: minIncineratorCapacity,
+			Logger:      logger,
+			MinCapacity: incineratorMinCap,
 		}
 
 		allIncs[ix] = gbb.NewIncinerator(iParams)
@@ -140,9 +145,10 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 	incinerate(ig, testParams{burnDuration: 1e5})
 
 	/// Then
+	verifyIncGroupFairContrib(ig, contribPercentThreshold, t)
 	burnIdMap := burnedIDMap(ig)
 	burnedIdMapLen := len(burnIdMap)
-	incineratorMap := burnContributorMap(ig)
+	incineratorMap := incineratorBurnedContribMap(ig)
 	incineratorMapLen := len(incineratorMap)
 
 	if incineratorMapLen != incineratorCount {
@@ -154,8 +160,6 @@ func Test_BurnMultipleBooksWithIncineratorGroup_ShouldAllocate(t *testing.T) {
 	}
 
 	for key, value := range incineratorMap {
-		t.Logf("Incinerator %s burned %d", key, value)
-
 		if value == 0 {
 			t.Errorf("%s should have burned something, but got nothing", key)
 		}

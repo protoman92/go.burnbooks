@@ -17,7 +17,12 @@ func newRandomSupplyPile(count int, offset int) gbb.FSupplyPile {
 		books[i] = gbb.NewBook(params)
 	}
 
-	bookParams := &gbb.SupplyPileParams{Supply: books}
+	bookParams := &gbb.SupplyPileParams{
+		Logger:      logger,
+		Supply:      books,
+		TakeTimeout: supplyPileTimeout,
+	}
+
 	return gbb.NewSupplyPile(bookParams)
 }
 
@@ -25,7 +30,6 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 	/// Setup
 	t.Parallel()
 	supplyPiles := make([]gbb.FSupplyPile, supplyPileCount)
-	t.Logf("Have %d supplies in total", totalSupplyCount)
 
 	for ix := range supplyPiles {
 		pile := newRandomSupplyPile(supplyPerPileCount, ix*supplyPerPileCount)
@@ -33,21 +37,20 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 	}
 
 	pileGroup := gbb.NewSupplyPileGroup(supplyPiles...)
-	takerCount := 50
-	supplyTakers := make([]gbb.SupplyTaker, takerCount)
-	supplyChs := make([]chan []gbb.Suppliable, takerCount)
+	supplyTakers := make([]gbb.SupplyTaker, supplyTakerCount)
+	supplyChs := make([]chan []gbb.Suppliable, supplyTakerCount)
 
 	for ix := range supplyTakers {
 		loadSupplyCh := make(chan []gbb.Suppliable)
 		readyCh := make(chan interface{})
 
-		btRawParams := &gbb.SupplyTakerRawParams{
+		stRawParams := &gbb.SupplyTakerRawParams{
 			Cap:  13,
 			STID: strconv.Itoa(ix),
 		}
 
-		btParams := &gbb.SupplyTakerParams{
-			SupplyTakerRawParams: btRawParams,
+		stParams := &gbb.SupplyTakerParams{
+			SupplyTakerRawParams: stRawParams,
 			LoadCh:               loadSupplyCh,
 			TakeReadyCh:          readyCh,
 		}
@@ -63,7 +66,7 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 			}
 		}()
 
-		supply := gbb.NewSupplyTaker(btParams)
+		supply := gbb.NewSupplyTaker(stParams)
 		supplyTakers[ix] = supply
 		supplyChs[ix] = loadSupplyCh
 	}
@@ -108,6 +111,7 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 	time.Sleep(waitDuration)
 
 	/// Then
+	verifySupplyGroupFairContrib(pileGroup, contribPercentThreshold, t)
 	allTakenResults := pileGroup.Taken()
 	allTakenMap := make(map[string]int, 0)
 	allTakenCount := 0
@@ -124,8 +128,6 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 	}
 
 	for key, value := range allTakenMap {
-		t.Logf("Supply taker %s took %d supplies", key, value)
-
 		if value == 0 {
 			t.Errorf("%s should have taken some, but took nothing", key)
 		}

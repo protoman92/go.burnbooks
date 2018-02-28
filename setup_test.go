@@ -1,41 +1,38 @@
 package goburnbooks_test
 
 import (
+	gbb "goburnbooks"
 	"time"
 )
 
 const (
-	burnableCountPerRound  = 1000
-	burnRounds             = 1
-	gopherCapacity         = 2
-	gopherCount            = 2
-	incineratorCap         = 100
-	incineratorCount       = 1
-	minIncineratorCapacity = incineratorCap / 2
-	providerCount          = 1
-	supplyPerPileCount     = 10
-	supplyPileCount        = 1
-	supplyPileTimeout      = time.Duration(1e8)
-	tripDelay              = time.Duration(1e5)
-	totalBurnCount         = providerCount * burnableCountPerRound * burnRounds
-	totalSupplyCount       = supplyPileCount * supplyPerPileCount
-	waitDuration           = time.Duration(2e9)
+	burnableCountPerRound = 1000
+	burnRounds            = 30
+	providerCount         = 5
+	totalBurnCount        = providerCount * burnableCountPerRound * burnRounds
 )
 
-// const (
-// 	burnableCountPerRound  = 1000
-// 	burnRounds             = 30
-// 	gopherCapacity         = 23
-// 	gopherCount            = 10
-// 	incineratorCap         = 100
-// 	incineratorCount       = 10
-// 	minIncineratorCapacity = incineratorCap / 2
-// 	providerCount          = 5
-// 	supplyPerPileCount     = 10000
-// 	supplyPileCount        = 10
-// 	supplyPileTimeout      = time.Duration(1e8)
-// 	tripDelay              = time.Duration(1e5)
-// 	totalBurnCount         = providerCount * burnableCountPerRound * burnRounds
-// 	totalSupplyCount       = supplyPileCount * supplyPerPileCount
-// 	waitDuration           = time.Duration(2e9)
-// )
+const (
+	supplyTakerCount = 10
+)
+
+const (
+	contribPercentThreshold = 0.2
+	gopherCapacity          = 30
+	gopherCount             = 3
+	gopherTakeTimeout       = time.Duration(1e5)
+	incineratorCap          = 30
+	incineratorCount        = 3
+	incineratorMinCap       = incineratorCap / 2
+	integrationWaitDuration = time.Duration(10e9)
+	supplyPerPileCount      = 1000
+	supplyPileCount         = 5
+	supplyPileTimeout       = time.Duration(1e5)
+	tripDelay               = time.Duration(1e8)
+	totalSupplyCount        = supplyPileCount * supplyPerPileCount
+	waitDuration            = time.Duration(2e9)
+)
+
+var (
+	logger = gbb.NewLogger(false)
+)

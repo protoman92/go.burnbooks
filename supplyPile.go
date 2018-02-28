@@ -1,6 +1,7 @@
 package goburnbooks
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -10,9 +11,16 @@ type SupplyPile interface {
 }
 
 // SupplyPileParams represents the required parameters to build a SupplyPile.
+// The take timeout should be a minimal value to prevent it from hogging the
+// loading process when a pile has no more supply to offer (which happens quite
+// frequently if there are many piles with small supply count). It should not
+// be 0, however, because that will randomize the select sequence so much so
+// that loading becomes suboptimal.
 type SupplyPileParams struct {
-	Supply []Suppliable
-	ID     string
+	Logger      Logger
+	Supply      []Suppliable
+	ID          string
+	TakeTimeout time.Duration
 }
 
 // FSupplyPile represents a pile of SupplyPiles with all functionalities.
@@ -22,23 +30,27 @@ type FSupplyPile interface {
 }
 
 type supplyPile struct {
+	*SupplyPileParams
 	supplyCh     chan Suppliable
-	id           string
 	takeResultCh chan *SupplyTakeResult
-	takeTimeout  time.Duration
 }
 
-func (bp *supplyPile) Supply(taker SupplyTaker) {
+func (sp *supplyPile) String() string {
+	return fmt.Sprintf("Supply pile %s", sp.ID)
+}
+
+func (sp *supplyPile) Supply(taker SupplyTaker) {
 	go func() {
 		capacity := taker.Capacity()
 		loaded := make([]Suppliable, 0)
+		logger := sp.Logger
 		readyCh := taker.TakeReadyChannel()
-		var loadResult *SupplyTakeResult
+		resetSequenceCh := make(chan interface{}, 1)
+		takerID := taker.SupplyTakerID()
 		var loadSupplyCh chan<- []Suppliable
 		var startLoadCh chan<- interface{}
 		var supplyCh chan Suppliable
-		var takeResultCh chan<- *SupplyTakeResult
-		var timeoutCh <-chan time.Time
+		var supplyTimeoutCh <-chan time.Time
 
 		for {
 			// The sequence of operation here is:
@@ -49,35 +61,41 @@ func (bp *supplyPile) Supply(taker SupplyTaker) {
 			// supply channel is empty, the timeout channel will win eventually.
 			// - Once the taker capacity has been reached, or the timeout happens,
 			// signal that take can happen.
-			// - Once start load happens, signal that loading can happen.
-			// - Once all the supplies have been loaded, initialize the load result
-			// and result channel, and signal that the result can be deposited.
-			// - Once the result has been consumed, reset the ready channel and the
-			// loaded slice to start another loading process.
-			//
-			// A possible optimization is to send the take result in another goroutine
-			// so as not to block the rest of the sequence.
+			// - Once start load happens, signal that loading can happen, but only
+			// if there is a positive number of loaded items. Otherwise, signal ready
+			// and wait for the next request.
+			// - Once all the supplies have been loaded, send the load result async
+			// and signal ready.
+			// - Finally, reset the ready channel and the loaded slice to prepare for
+			// another loading process
 			select {
 			case <-readyCh:
 				// Nullify the ready channel here to let the sequence run in peace.
+				logger.Printf("%v received ready from %v", sp, taker)
 				readyCh = nil
-				supplyCh = bp.supplyCh
-				timeoutCh = time.After(bp.takeTimeout)
+				supplyCh = sp.supplyCh
+				supplyTimeoutCh = time.After(sp.TakeTimeout)
 
+			// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 			case supply := <-supplyCh:
 				loaded = append(loaded, supply)
 
 				if len(loaded) == capacity {
+					logger.Printf("%v supplied to full cap for %v", sp, taker)
 					supplyCh = nil
+					supplyTimeoutCh = nil
 
 					// This must be initialized with 1 buffer slot so that it does not
 					// block when we try to insert value below.
 					startLoadCh = make(chan interface{}, 1)
 				}
 
-			case <-timeoutCh:
-				timeoutCh = nil
+			case <-supplyTimeoutCh:
+				logger.Printf("%v timed out for %v!", sp, taker)
+				supplyTimeoutCh = nil
+				supplyCh = nil
 				startLoadCh = make(chan interface{}, 1)
+			// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 			case startLoadCh <- true:
 				// With this setup, we can be sure that once this stage this reached,
@@ -88,43 +106,40 @@ func (bp *supplyPile) Supply(taker SupplyTaker) {
 				// selected.
 				startLoadCh = nil
 
-				// If the available channel was initialized, these two channels will
-				// essentially be chosen at random. It does not matter which one goes
-				// first, however.
-				loadSupplyCh = taker.LoadChannel()
+				if len(loaded) > 0 {
+					// Only initialize the load supply channel when there are loaded items.
+					// Beware that if the taker relies on this channel to orchestrate
+					// its work, said taker should have some mechanism to detect lack of
+					// signal in order to send its requests elsewhere, such as timeout.
+					loadSupplyCh = taker.LoadChannel()
+				} else {
+					logger.Printf("%v did not supply anything for %v", sp, taker)
+					resetSequenceCh <- true
+				}
 
 			case loadSupplyCh <- loaded:
+				logger.Printf("%v supplied %v to %v", sp, loaded, taker)
 				loadSupplyCh = nil
+				resetSequenceCh <- true
+
 				supplyIds := make([]string, len(loaded))
 
 				for ix, supply := range loaded {
 					supplyIds[ix] = supply.SuppliableID()
 				}
 
-				// Only at this step do both of the variables below get set. When the
-				// result has been successfully deposited, deinitialize them immediately.
-				loadResult = &SupplyTakeResult{
-					SupplyIds: supplyIds,
-					PileID:    bp.id,
-					TakerID:   taker.SupplyTakerID(),
-				}
+				go func() {
+					loadResult := &SupplyTakeResult{
+						SupplyIds: supplyIds,
+						PileID:    sp.ID,
+						TakerID:   takerID,
+					}
 
-				takeResultCh = bp.takeResultCh
+					sp.takeResultCh <- loadResult
+				}()
 
-			case takeResultCh <- loadResult:
-				if len(loaded) != capacity {
-					// If the number of loaded supplies is not equal to the taker's
-					// capacity, the pile does not have enough supplies left for another
-					// take operation.
-					return
-				}
-
-				takeResultCh = nil
-				loadResult = nil
-
-				// Reset the loaded slice here to enable next round of loading. This
-				// is done at the last step of the process, before we force a delay on
-				// the next take operation.
+			case <-resetSequenceCh:
+				// Reset the loaded slice here to enable next round of loading.
 				loaded = make([]Suppliable, 0)
 
 				// Reinstate the ready channel to start taking requests again.
@@ -134,8 +149,8 @@ func (bp *supplyPile) Supply(taker SupplyTaker) {
 	}()
 }
 
-func (bp *supplyPile) TakeResultChannel() <-chan *SupplyTakeResult {
-	return bp.takeResultCh
+func (sp *supplyPile) TakeResultChannel() <-chan *SupplyTakeResult {
+	return sp.takeResultCh
 }
 
 // NewSupplyPile creates a new SupplyPile.
@@ -148,10 +163,9 @@ func NewSupplyPile(params *SupplyPileParams) FSupplyPile {
 	}
 
 	pile := &supplyPile{
-		supplyCh:     supplyCh,
-		id:           params.ID,
-		takeResultCh: make(chan *SupplyTakeResult),
-		takeTimeout:  1e9,
+		SupplyPileParams: params,
+		supplyCh:         supplyCh,
+		takeResultCh:     make(chan *SupplyTakeResult),
 	}
 
 	return pile
