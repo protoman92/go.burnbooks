@@ -10,4 +10,4 @@ The system comprises the following players:
 
 - **Gopher**: Each acts as both **SupplyTaker** and **BurnableProvider**, bringing **Books** from any **SupplyPile** to any **Incinerator**.
 
-Each **Book** has a fixed burn duration, and each trip from a **SupplyPile** to an **Incinerator** may cost some time. **Gophers** need to wait for ready signals from **Incinerators** before they can start depositing **Books**. The difficulty with this exercise lies with the chaotic interactions between many **SupplyPiles**, **Gophers** and **Incinerators** and accurate processing of **Books** so that all are burned and unique.
+Each **Book** has a fixed burn duration, and each trip from a **SupplyPile** to an **Incinerator** may cost some time. **Gophers** need to wait for ready signals from **Incinerators** before they can start depositing **Books**, while **SupplyPiles** need to wait for ready signals from **Gophers** before they can begin supplying. The difficulty with this exercise lies with the chaotic interactions between many **SupplyPiles**, **Gophers** and **Incinerators** and the accurate processing of **Books** so that all are burned and unique.

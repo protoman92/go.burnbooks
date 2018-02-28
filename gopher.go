@@ -48,7 +48,8 @@ func (g *gopher) loopWork() {
 		// The sequence of work is as follows:
 		// - Firstly, signal that this gopher is ready to take some supplies, then
 		// immediately set the take ready channel to nil to discard it in the next
-		// loop. Initialize the supply load to start receiving supplies.
+		// loop. Initialize the supply load to start receiving supplies, and the
+		// timeout channel to reset the process if no supplies arrive on time.
 		// - When supplies arrive, nullify the supply load channel. Extract the
 		// Burnables from said supplies, then sleep for a while to simulate trip
 		// duration. Afterwards, initialize the provide channel to feed Burnables
