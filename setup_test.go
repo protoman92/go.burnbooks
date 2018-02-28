@@ -31,7 +31,7 @@ const (
 	supplyPileTimeout       = time.Duration(1e5)
 	tripDelay               = time.Duration(1e8)
 	totalSupplyCount        = supplyPileCount * supplyPerPileCount
-	waitDuration            = time.Duration(2e9)
+	waitDuration            = time.Duration(5e9)
 )
 
 var (
