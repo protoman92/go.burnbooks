@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	gbb "goburnbooks"
+	gbb "github.com/protoman92/goburnbooks"
 )
 
 const (
