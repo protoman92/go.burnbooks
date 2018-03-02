@@ -16,13 +16,14 @@ func newRandomSupplyPile(count int, offset int) SupplyPile {
 		books[i] = NewBook(params)
 	}
 
-	bookParams := &SupplyPileParams{
-		Logger:      logWorker,
-		Supply:      books,
-		TakeTimeout: supplyPileTimeout,
+	supplyParams := &SupplyPileParams{
+		Logger:             logWorker,
+		Supply:             books,
+		TakeResultCapacity: 0,
+		TakeTimeout:        supplyPileTimeout,
 	}
 
-	return NewSupplyPile(bookParams)
+	return NewSupplyPile(supplyParams)
 }
 
 func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
@@ -43,7 +44,7 @@ func Test_SupplyTakersHavingOddCapacity_ShouldStillLoadAll(t *testing.T) {
 		loadSupplyCh := make(chan []Suppliable)
 		readyCh := make(chan interface{})
 
-		stRawParams := &SupplyTakerRawParams{
+		stRawParams := SupplyTakerRawParams{
 			Cap:  13,
 			STID: strconv.Itoa(ix),
 		}

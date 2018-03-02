@@ -18,14 +18,15 @@ type SupplyPile interface {
 // be 0, however, because that will randomize the select sequence so much so
 // that loading becomes suboptimal.
 type SupplyPileParams struct {
-	Logger      Logger
-	Supply      []Suppliable
-	ID          string
-	TakeTimeout time.Duration
+	Logger             Logger
+	Supply             []Suppliable
+	ID                 string
+	TakeResultCapacity uint
+	TakeTimeout        time.Duration
 }
 
 type supplyPile struct {
-	*SupplyPileParams
+	SupplyPileParams
 	supplyCh     chan Suppliable
 	takeResultCh chan *SupplyTakeResult
 }
@@ -40,12 +41,14 @@ func (sp *supplyPile) Supply(taker SupplyTaker) {
 		loaded := make([]Suppliable, 0)
 		logger := sp.Logger
 		readyCh := taker.TakeReadyChannel()
-		resetSequenceCh := make(chan interface{}, 1)
 		takerID := taker.SupplyTakerID()
+		var loadResult *SupplyTakeResult
 		var loadSupplyCh chan<- []Suppliable
+		var resetSequenceCh chan interface{}
 		var startLoadCh chan<- interface{}
 		var supplyCh chan Suppliable
 		var supplyTimeoutCh <-chan time.Time
+		var takeResultCh chan *SupplyTakeResult
 
 		for {
 			// The sequence of operation here is:
@@ -59,8 +62,8 @@ func (sp *supplyPile) Supply(taker SupplyTaker) {
 			// - Once start load happens, signal that loading can happen, but only
 			// if there is a positive number of loaded items. Otherwise, signal ready
 			// and wait for the next request.
-			// - Once all the supplies have been loaded, send the load result async
-			// and signal ready.
+			// - Once all the supplies have been loaded, initialize the result channel.
+			// - After the result has been deposited, initialize the reset channel.
 			// - Finally, reset the ready channel and the loaded slice to prepare for
 			// another loading process
 			select {
@@ -109,13 +112,13 @@ func (sp *supplyPile) Supply(taker SupplyTaker) {
 					loadSupplyCh = taker.LoadChannel()
 				} else {
 					logger.Printf("%v did not supply anything for %v", sp, taker)
-					resetSequenceCh <- true
+					resetSequenceCh = make(chan interface{}, 1)
 				}
 
 			case loadSupplyCh <- loaded:
 				logger.Printf("%v supplied %v to %v", sp, loaded, taker)
 				loadSupplyCh = nil
-				resetSequenceCh <- true
+				takeResultCh = sp.takeResultCh
 
 				supplyIds := make([]string, len(loaded))
 
@@ -123,17 +126,21 @@ func (sp *supplyPile) Supply(taker SupplyTaker) {
 					supplyIds[ix] = supply.SuppliableID()
 				}
 
-				go func() {
-					loadResult := &SupplyTakeResult{
-						SupplyIds: supplyIds,
-						PileID:    sp.ID,
-						TakerID:   takerID,
-					}
+				loadResult = &SupplyTakeResult{
+					SupplyIds: supplyIds,
+					PileID:    sp.ID,
+					TakerID:   takerID,
+				}
 
-					sp.takeResultCh <- loadResult
-				}()
+			case takeResultCh <- loadResult:
+				logger.Printf("%v added result %v", sp, loadResult)
+				takeResultCh = nil
+				loadResult = nil
+				resetSequenceCh = make(chan interface{}, 1)
 
-			case <-resetSequenceCh:
+			case resetSequenceCh <- true:
+				resetSequenceCh = nil
+
 				// Reset the loaded slice here to enable next round of loading.
 				loaded = make([]Suppliable, 0)
 
@@ -158,9 +165,9 @@ func NewSupplyPile(params *SupplyPileParams) SupplyPile {
 	}
 
 	pile := &supplyPile{
-		SupplyPileParams: params,
+		SupplyPileParams: *params,
 		supplyCh:         supplyCh,
-		takeResultCh:     make(chan *SupplyTakeResult),
+		takeResultCh:     make(chan *SupplyTakeResult, params.TakeResultCapacity),
 	}
 
 	return pile

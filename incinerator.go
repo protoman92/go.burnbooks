@@ -23,7 +23,7 @@ type IncineratorParams struct {
 }
 
 type incinerator struct {
-	*IncineratorParams
+	IncineratorParams
 	burnResult chan *BurnResult
 }
 
@@ -120,13 +120,16 @@ func (i *incinerator) Consume(provider BurnableProvider) {
 			case <-enoughProcessedCh:
 				logger.Printf("%v has burned enough, signalling ready", i)
 				enoughProcessedCh = nil
-				readyCh = provider.ConsumeReadyChannel()
 
-				// Reinstate the provide channel to receive more requests.
-				provideCh = provider.ProvideChannel()
+				// We must ensure that the ready channel is constantly drained to
+				// prevent it from blocking progress.
+				readyCh = provider.ConsumeReadyChannel()
 
 			case readyCh <- true:
 				readyCh = nil
+
+				// Reinstate the provide channel to receive more requests.
+				provideCh = provider.ProvideChannel()
 			}
 		}
 	}()
@@ -141,19 +144,17 @@ func (i *incinerator) UID() string {
 // given point in time.
 func NewIncinerator(params *IncineratorParams) Incinerator {
 	i := &incinerator{
-		IncineratorParams: params,
+		IncineratorParams: *params,
 		burnResult:        make(chan *BurnResult),
 	}
 
 	if i.Capacity < i.MinCapacity {
-		err := fmt.Sprintf(
+		panic(fmt.Sprintf(
 			"%v has capacity %d less than min capacity %d",
 			i,
 			i.Capacity,
 			i.MinCapacity,
-		)
-
-		panic(err)
+		))
 	}
 
 	return i

@@ -18,7 +18,7 @@ type Book interface {
 }
 
 type book struct {
-	*BookParams
+	BookParams
 }
 
 func (b *book) String() string {
@@ -39,7 +39,7 @@ func (b *book) Burn() {
 
 // NewBook returns a Burnable and Suppliable book.
 func NewBook(params *BookParams) Book {
-	return &book{BookParams: params}
+	return &book{BookParams: *params}
 }
 
 // ExtractBurnablesFromSuppliables extract Burnables from a number of Suppliables.

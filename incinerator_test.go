@@ -15,12 +15,12 @@ func newBurnables(params testParams, pref1 string, pref2 string) []Burnable {
 	burnables := make([]Burnable, burnableCountPerRound)
 
 	for ix := range burnables {
-		bParams := &BookParams{
+		bParams := BookParams{
 			BurnDuration: params.burnDuration,
 			ID:           fmt.Sprintf("%s-%s-%d", pref1, pref2, ix),
 		}
 
-		burnable := NewBook(bParams)
+		burnable := NewBook(&bParams)
 		burnables[ix] = burnable
 	}
 
@@ -30,15 +30,16 @@ func newBurnables(params testParams, pref1 string, pref2 string) []Burnable {
 func incinerate(ig IncineratorGroup, params testParams) {
 	for i := 0; i < providerCount; i++ {
 		provideCh := make(chan []Burnable)
-		prRawParams := &BurnableProviderRawParams{BPID: strconv.Itoa(i)}
+		prRawParams := BurnableProviderRawParams{BPID: strconv.Itoa(i)}
+		readyCh := make(chan interface{})
 
-		prParams := &BurnableProviderParams{
+		prParams := BurnableProviderParams{
 			BurnableProviderRawParams: prRawParams,
 			ProvideCh:                 provideCh,
-			ConsumeReadyCh:            make(chan interface{}, 1),
+			ConsumeReadyCh:            readyCh,
 		}
 
-		provider := NewBurnableProvider(prParams)
+		provider := NewBurnableProvider(&prParams)
 
 		go func(ix int) {
 			for j := 0; j < burnRounds; j++ {
@@ -47,6 +48,12 @@ func incinerate(ig IncineratorGroup, params testParams) {
 				time.Sleep(1e5)
 			}
 		}(i)
+
+		go func() {
+			for {
+				<-readyCh
+			}
+		}()
 
 		ig.Consume(provider)
 	}

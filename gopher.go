@@ -13,8 +13,8 @@ type Gopher interface {
 
 // GopherParams represents all the required parameters to build a Gopher.
 type GopherParams struct {
-	*BurnableProviderRawParams
-	*SupplyTakerRawParams
+	BurnableProviderRawParams
+	SupplyTakerRawParams
 	Logger       Logger
 	TakeTimeout  time.Duration
 	TripDuration time.Duration
@@ -23,7 +23,7 @@ type GopherParams struct {
 type gopher struct {
 	BurnableProvider
 	SupplyTaker
-	*GopherParams
+	GopherParams
 	bpConsumerReadyCh chan interface{}
 	bpProvideCh       chan []Burnable
 	stLoadCh          chan []Suppliable
@@ -120,7 +120,7 @@ func NewGopher(params *GopherParams) Gopher {
 			LoadCh:               stLoadCh,
 			TakeReadyCh:          stTakeReadyCh,
 		}),
-		GopherParams:      params,
+		GopherParams:      *params,
 		bpConsumerReadyCh: bpConsumeReadyCh,
 		bpProvideCh:       bpProvideCh,
 		stLoadCh:          stLoadCh,

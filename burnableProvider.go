@@ -21,13 +21,13 @@ type BurnableProviderRawParams struct {
 // BurnableProviderParams represents all the required parameters to build a
 // provider.
 type BurnableProviderParams struct {
-	*BurnableProviderRawParams
+	BurnableProviderRawParams
 	ConsumeReadyCh chan<- interface{}
 	ProvideCh      <-chan []Burnable
 }
 
 type burnableProvider struct {
-	*BurnableProviderParams
+	BurnableProviderParams
 }
 
 func (bp *burnableProvider) ProvideChannel() <-chan []Burnable {
@@ -44,5 +44,5 @@ func (bp *burnableProvider) BurnableProviderID() string {
 
 // NewBurnableProvider returns a new BurnableProvider.
 func NewBurnableProvider(params *BurnableProviderParams) BurnableProvider {
-	return &burnableProvider{BurnableProviderParams: params}
+	return &burnableProvider{BurnableProviderParams: *params}
 }

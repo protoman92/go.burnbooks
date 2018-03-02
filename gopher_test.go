@@ -13,11 +13,11 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 	gophers := make([]Gopher, gopherCount)
 
 	for ix := range gophers {
-		gParams := &GopherParams{
-			BurnableProviderRawParams: &BurnableProviderRawParams{
+		gParams := GopherParams{
+			BurnableProviderRawParams: BurnableProviderRawParams{
 				BPID: strconv.Itoa(ix),
 			},
-			SupplyTakerRawParams: &SupplyTakerRawParams{
+			SupplyTakerRawParams: SupplyTakerRawParams{
 				Cap:  gopherCapacity,
 				STID: strconv.Itoa(ix),
 			},
@@ -26,7 +26,7 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 			TripDuration: tripDelay,
 		}
 
-		gopher := NewGopher(gParams)
+		gopher := NewGopher(&gParams)
 		gophers[ix] = gopher
 	}
 
@@ -40,21 +40,22 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 
 		for jx := range supplies {
 			id := fmt.Sprintf("%d-%d", ix, jx)
-			bParams := &BookParams{BurnDuration: burnDuration, ID: id}
-			book := NewBook(bParams)
+			bParams := BookParams{BurnDuration: burnDuration, ID: id}
+			book := NewBook(&bParams)
 			supplies[jx] = book
 			allBooks = append(allBooks, book)
 			allBookIds = append(allBookIds, id)
 		}
 
-		pParams := &SupplyPileParams{
-			Logger:      logWorker,
-			Supply:      supplies,
-			ID:          strconv.Itoa(ix),
-			TakeTimeout: supplyPileTimeout,
+		pParams := SupplyPileParams{
+			Logger:             logWorker,
+			Supply:             supplies,
+			ID:                 strconv.Itoa(ix),
+			TakeResultCapacity: 0,
+			TakeTimeout:        supplyPileTimeout,
 		}
 
-		pile := NewSupplyPile(pParams)
+		pile := NewSupplyPile(&pParams)
 		piles[ix] = pile
 	}
 
@@ -63,14 +64,14 @@ func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 	incinerators := make([]Incinerator, incineratorCount)
 
 	for ix := range incinerators {
-		iParams := &IncineratorParams{
+		iParams := IncineratorParams{
 			Capacity:    incineratorCap,
 			ID:          strconv.Itoa(ix),
 			Logger:      logWorker,
 			MinCapacity: incineratorMinCap,
 		}
 
-		incinerator := NewIncinerator(iParams)
+		incinerator := NewIncinerator(&iParams)
 		incinerators[ix] = incinerator
 	}
 

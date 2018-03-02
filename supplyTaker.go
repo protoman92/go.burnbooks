@@ -21,13 +21,13 @@ type SupplyTakerRawParams struct {
 
 // SupplyTakerParams represents all the required parameters to build a taker.
 type SupplyTakerParams struct {
-	*SupplyTakerRawParams
+	SupplyTakerRawParams
 	LoadCh      chan<- []Suppliable
 	TakeReadyCh chan interface{}
 }
 
 type supplyTaker struct {
-	*SupplyTakerParams
+	SupplyTakerParams
 }
 
 func (bt *supplyTaker) Capacity() uint {
@@ -48,7 +48,7 @@ func (bt *supplyTaker) SupplyTakerID() string {
 
 // NewSupplyTaker creates a new SupplyTaker.
 func NewSupplyTaker(params *SupplyTakerParams) SupplyTaker {
-	return &supplyTaker{SupplyTakerParams: params}
+	return &supplyTaker{SupplyTakerParams: *params}
 }
 
 // SupplyTakeResult represents the result of a take operation.
