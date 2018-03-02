@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"strconv"
 	"time"
 
@@ -9,15 +10,17 @@ import (
 )
 
 const (
-	burnDuration       = time.Duration(1e8)
 	gopherCount        = 10
 	gopherCapacity     = 23
 	gopherTakeTimeout  = time.Duration(1e5)
 	incineratorCap     = 20
 	incineratorMinCap  = incineratorCap / 2
 	incineratorCount   = 6
-	tripDelay          = time.Duration(1e9)
-	supplyPerPileCount = 10000
+	maxBurnDuration    = time.Duration(10e9)
+	minBurnDuration    = time.Duration(1e9)
+	maxTripDelay       = time.Duration(3e9)
+	minTripDelay       = time.Duration(1e9)
+	supplyPerPileCount = 1000
 	supplyPileCount    = 5
 	supplyPileTimeout  = time.Duration(1e5)
 	totalSupplyCount   = supplyPileCount * supplyPerPileCount
@@ -27,21 +30,25 @@ var (
 	logger = gbb.NewLogger(false)
 )
 
+func randomDuration(min time.Duration, max time.Duration) time.Duration {
+	return min + time.Duration(rand.Int63n(int64(max-min)))
+}
+
 func main() {
 	gophers := make([]gbb.Gopher, gopherCount)
 
 	for ix := range gophers {
 		gParams := &gbb.GopherParams{
-			BurnableProviderRawParams: &gbb.BurnableProviderRawParams{
+			BurnableProviderRawParams: gbb.BurnableProviderRawParams{
 				BPID: strconv.Itoa(ix),
 			},
-			SupplyTakerRawParams: &gbb.SupplyTakerRawParams{
+			SupplyTakerRawParams: gbb.SupplyTakerRawParams{
 				Cap:  gopherCapacity,
 				STID: strconv.Itoa(ix),
 			},
 			Logger:       logger,
 			TakeTimeout:  gopherTakeTimeout,
-			TripDuration: tripDelay,
+			TripDuration: randomDuration(minTripDelay, maxTripDelay),
 		}
 
 		gopher := gbb.NewGopher(gParams)
@@ -57,7 +64,8 @@ func main() {
 
 		for jx := range supplies {
 			id := fmt.Sprintf("%d-%d", ix, jx)
-			bParams := &gbb.BookParams{BurnDuration: burnDuration, ID: id}
+			duration := randomDuration(minBurnDuration, maxBurnDuration)
+			bParams := &gbb.BookParams{BurnDuration: duration, ID: id}
 			book := gbb.NewBook(bParams)
 			supplies[jx] = book
 			allBooks = append(allBooks, book)
