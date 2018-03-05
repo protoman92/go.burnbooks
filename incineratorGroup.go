@@ -1,9 +1,13 @@
 package goburnbooks
 
+import (
+	"sync"
+)
+
 // IncineratorGroup represents a group of incinerators.
 type IncineratorGroup interface {
 	Incinerator
-	Burned() []*BurnResult
+	Burned() []BurnResult
 
 	// Get the id's of all burned Burnables.
 	BurnedIDMap() map[string]int
@@ -15,22 +19,35 @@ type IncineratorGroup interface {
 	ProviderContribMap() map[string]int
 }
 
-type incineratorGroup struct {
-	burned       []*BurnResult
-	burnResultCh chan *BurnResult
-	incinerators []Incinerator
+// IncineratorGroupParams represents all the required parameters to build an
+// IncineratorGroup.
+type IncineratorGroupParams struct {
+	Incinerators       []FIncinerator
+	BurnResultCapacity uint
 }
 
-func (ig *incineratorGroup) Burned() []*BurnResult {
+type incineratorGroup struct {
+	IncineratorGroupParams
+	mutex        sync.RWMutex
+	burned       []BurnResult
+	burnResultCh chan BurnResult
+}
+
+func (ig *incineratorGroup) Burned() []BurnResult {
+	ig.mutex.RLock()
+	defer ig.mutex.RUnlock()
 	return ig.burned
 }
 
 func (ig *incineratorGroup) BurnedIDMap() map[string]int {
+	ig.mutex.RLock()
 	allBurned := ig.burned
+	ig.mutex.RUnlock()
+
 	burnedMap := make(map[string]int, 0)
 
 	for _, burned := range allBurned {
-		id := burned.Burned.BurnableID()
+		id := burned.Burned().BurnableID()
 		burnedMap[id] = burnedMap[id] + 1
 	}
 
@@ -38,11 +55,14 @@ func (ig *incineratorGroup) BurnedIDMap() map[string]int {
 }
 
 func (ig *incineratorGroup) IncineratorContribMap() map[string]int {
+	ig.mutex.RLock()
 	allBurned := ig.burned
+	ig.mutex.RUnlock()
+
 	contributorMap := make(map[string]int, 0)
 
 	for _, burned := range allBurned {
-		id := burned.IncineratorID
+		id := burned.IncineratorID()
 		contributorMap[id] = contributorMap[id] + 1
 	}
 
@@ -50,23 +70,26 @@ func (ig *incineratorGroup) IncineratorContribMap() map[string]int {
 }
 
 func (ig *incineratorGroup) ProviderContribMap() map[string]int {
+	ig.mutex.RLock()
 	allBurned := ig.burned
+	ig.mutex.RUnlock()
+
 	contributorMap := make(map[string]int, 0)
 
 	for _, burned := range allBurned {
-		id := burned.ProviderID
+		id := burned.ProviderID()
 		contributorMap[id] = contributorMap[id] + 1
 	}
 
 	return contributorMap
 }
 
-func (ig *incineratorGroup) BurnResultChannel() <-chan *BurnResult {
+func (ig *incineratorGroup) BurnResultChannel() <-chan BurnResult {
 	return ig.burnResultCh
 }
 
 func (ig *incineratorGroup) Consume(provider BurnableProvider) {
-	for _, i := range ig.incinerators {
+	for _, i := range ig.Incinerators {
 		go i.Consume(provider)
 	}
 }
@@ -74,7 +97,7 @@ func (ig *incineratorGroup) Consume(provider BurnableProvider) {
 func (ig *incineratorGroup) UID() string {
 	var id string
 
-	for _, i := range ig.incinerators {
+	for _, i := range ig.Incinerators {
 		id += id + "-" + i.UID()
 	}
 
@@ -83,13 +106,14 @@ func (ig *incineratorGroup) UID() string {
 
 // Loop each incinerator to fetch burned updates.
 func (ig *incineratorGroup) loopBurn() {
-	updateAllBurnedCh := make(chan *BurnResult)
+	updateAllBurnedCh := make(chan BurnResult)
 
-	for _, i := range ig.incinerators {
-		go func(i Incinerator) {
+	for _, i := range ig.Incinerators {
+		go func(i FIncinerator) {
+			resetSequenceCh := make(chan interface{}, 1)
 			var burnResultCh = i.BurnResultChannel()
-			var burnResult *BurnResult
-			var updateBurnedCh chan<- *BurnResult
+			var burnResult BurnResult
+			var updateBurnedCh chan<- BurnResult
 
 			for {
 				// The sequence of this statement is:
@@ -99,14 +123,22 @@ func (ig *incineratorGroup) loopBurn() {
 				// - After the burn result has been updated, reinstate the burn result
 				// channel to keep receiving updates.
 				select {
-				case burned := <-burnResultCh:
+				case burned, ok := <-burnResultCh:
 					burnResultCh = nil
-					burnResult = burned
-					updateBurnedCh = updateAllBurnedCh
+
+					if ok {
+						burnResult = burned
+						updateBurnedCh = updateAllBurnedCh
+					} else {
+						return
+					}
 
 				case updateBurnedCh <- burnResult:
 					burnResult = nil
 					updateBurnedCh = nil
+					resetSequenceCh <- true
+
+				case <-resetSequenceCh:
 					burnResultCh = i.BurnResultChannel()
 				}
 			}
@@ -114,14 +146,27 @@ func (ig *incineratorGroup) loopBurn() {
 	}
 
 	go func() {
+		updateBurned := updateAllBurnedCh
+		var burnResultCh chan<- BurnResult
+		var lastBurned BurnResult
+
 		for {
 			select {
-			case burned := <-updateAllBurnedCh:
-				ig.burned = append(ig.burned, burned)
+			case burned := <-updateBurned:
+				updateBurned = nil
 
-				go func() {
-					ig.burnResultCh <- burned
-				}()
+				// Note that this mutex is only used to modify the burned result
+				// map, since said map is accessible via a getter method.
+				ig.mutex.Lock()
+				ig.burned = append(ig.burned, burned)
+				ig.mutex.Unlock()
+				lastBurned = burned
+				burnResultCh = ig.burnResultCh
+
+			case burnResultCh <- lastBurned:
+				burnResultCh = nil
+				lastBurned = nil
+				updateBurned = updateAllBurnedCh
 			}
 		}
 	}()
@@ -131,11 +176,11 @@ func (ig *incineratorGroup) loopBurn() {
 // incinerators. An incinerator group implements the same functionalities as
 // an incinerator, so we can access them directly instead of viewing individual
 // incinerators.
-func NewIncineratorGroup(incinerators ...Incinerator) IncineratorGroup {
+func NewIncineratorGroup(params *IncineratorGroupParams) IncineratorGroup {
 	ig := &incineratorGroup{
-		burned:       make([]*BurnResult, 0),
-		burnResultCh: make(chan *BurnResult),
-		incinerators: incinerators,
+		IncineratorGroupParams: *params,
+		burned:                 make([]BurnResult, 0),
+		burnResultCh:           make(chan BurnResult, params.BurnResultCapacity),
 	}
 
 	go ig.loopBurn()

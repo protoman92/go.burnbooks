@@ -2,13 +2,19 @@ package goburnbooks
 
 import (
 	"fmt"
+	"sync"
 	"time"
 )
 
 // SupplyPile represents a pile of Suppliables.
 type SupplyPile interface {
 	Supply(taker SupplyTaker)
-	TakeResultChannel() <-chan *SupplyTakeResult
+}
+
+// FSupplyPile represents a SupplyPile that has all functionalities.
+type FSupplyPile interface {
+	SupplyPile
+	TakeResultChannel() <-chan SupplyTakeResult
 }
 
 // SupplyPileParams represents the required parameters to build a SupplyPile.
@@ -26,9 +32,10 @@ type SupplyPileParams struct {
 }
 
 type supplyPile struct {
+	mutex sync.Mutex
 	SupplyPileParams
 	supplyCh     chan Suppliable
-	takeResultCh chan *SupplyTakeResult
+	takeResultCh chan SupplyTakeResult
 }
 
 func (sp *supplyPile) String() string {
@@ -40,15 +47,15 @@ func (sp *supplyPile) Supply(taker SupplyTaker) {
 		capacity := taker.Capacity()
 		loaded := make([]Suppliable, 0)
 		logger := sp.Logger
-		readyCh := taker.TakeReadyChannel()
+		readyCh := taker.SendTakeReadyChannel()
 		takerID := taker.SupplyTakerID()
-		var loadResult *SupplyTakeResult
+		var loadResult SupplyTakeResult
 		var loadSupplyCh chan<- []Suppliable
 		var resetSequenceCh chan interface{}
 		var startLoadCh chan<- interface{}
 		var supplyCh chan Suppliable
 		var supplyTimeoutCh <-chan time.Time
-		var takeResultCh chan *SupplyTakeResult
+		var takeResultCh chan SupplyTakeResult
 
 		for {
 			// The sequence of operation here is:
@@ -69,17 +76,21 @@ func (sp *supplyPile) Supply(taker SupplyTaker) {
 			select {
 			case <-readyCh:
 				// Nullify the ready channel here to let the sequence run in peace.
-				logger.Printf("%v received ready from %v", sp, taker)
+				logger.Printf("%v: received ready from %v", sp, taker)
 				readyCh = nil
 				supplyCh = sp.supplyCh
 				supplyTimeoutCh = time.After(sp.TakeTimeout)
 
 			// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-			case supply := <-supplyCh:
+			case supply, ok := <-supplyCh:
+				if !ok {
+					return
+				}
+
 				loaded = append(loaded, supply)
 
 				if uint(len(loaded)) == capacity {
-					logger.Printf("%v supplied to full cap for %v", sp, taker)
+					logger.Printf("%v: supplied to full (%d) for %v", sp, capacity, taker)
 					supplyCh = nil
 					supplyTimeoutCh = nil
 
@@ -89,7 +100,7 @@ func (sp *supplyPile) Supply(taker SupplyTaker) {
 				}
 
 			case <-supplyTimeoutCh:
-				logger.Printf("%v timed out for %v!", sp, taker)
+				logger.Printf("%v: timed out for %v!", sp, taker)
 				supplyTimeoutCh = nil
 				supplyCh = nil
 				startLoadCh = make(chan interface{}, 1)
@@ -109,14 +120,14 @@ func (sp *supplyPile) Supply(taker SupplyTaker) {
 					// Beware that if the taker relies on this channel to orchestrate
 					// its work, said taker should have some mechanism to detect lack of
 					// signal in order to send its requests elsewhere, such as timeout.
-					loadSupplyCh = taker.LoadChannel()
+					loadSupplyCh = taker.ReceiveLoadChannel()
 				} else {
-					logger.Printf("%v did not supply anything for %v", sp, taker)
+					logger.Printf("%v: did not supply anything for %v", sp, taker)
 					resetSequenceCh = make(chan interface{}, 1)
 				}
 
 			case loadSupplyCh <- loaded:
-				logger.Printf("%v supplied %v to %v", sp, loaded, taker)
+				logger.Printf("%v: supplied %d to %v", sp, len(loaded), taker)
 				loadSupplyCh = nil
 				takeResultCh = sp.takeResultCh
 
@@ -126,37 +137,28 @@ func (sp *supplyPile) Supply(taker SupplyTaker) {
 					supplyIds[ix] = supply.SuppliableID()
 				}
 
-				loadResult = &SupplyTakeResult{
-					SupplyIds: supplyIds,
-					PileID:    sp.ID,
-					TakerID:   takerID,
-				}
+				loadResult = NewTakeResult(sp.ID, takerID, supplyIds)
 
 			case takeResultCh <- loadResult:
-				logger.Printf("%v added result %v", sp, loadResult)
 				takeResultCh = nil
 				loadResult = nil
 				resetSequenceCh = make(chan interface{}, 1)
 
 			case resetSequenceCh <- true:
 				resetSequenceCh = nil
-
-				// Reset the loaded slice here to enable next round of loading.
 				loaded = make([]Suppliable, 0)
-
-				// Reinstate the ready channel to start taking requests again.
-				readyCh = taker.TakeReadyChannel()
+				readyCh = taker.SendTakeReadyChannel()
 			}
 		}
 	}()
 }
 
-func (sp *supplyPile) TakeResultChannel() <-chan *SupplyTakeResult {
+func (sp *supplyPile) TakeResultChannel() <-chan SupplyTakeResult {
 	return sp.takeResultCh
 }
 
 // NewSupplyPile creates a new SupplyPile.
-func NewSupplyPile(params *SupplyPileParams) SupplyPile {
+func NewSupplyPile(params *SupplyPileParams) FSupplyPile {
 	supplies := params.Supply
 	supplyCh := make(chan Suppliable, len(supplies))
 
@@ -167,7 +169,7 @@ func NewSupplyPile(params *SupplyPileParams) SupplyPile {
 	pile := &supplyPile{
 		SupplyPileParams: *params,
 		supplyCh:         supplyCh,
-		takeResultCh:     make(chan *SupplyTakeResult, params.TakeResultCapacity),
+		takeResultCh:     make(chan SupplyTakeResult, params.TakeResultCapacity),
 	}
 
 	return pile

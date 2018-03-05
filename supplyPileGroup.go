@@ -1,21 +1,21 @@
 package goburnbooks
 
+import (
+	"sync"
+)
+
 // SupplyPileGroup represents a group of SupplyPiles.
 type SupplyPileGroup interface {
 	SupplyPile
-	Taken() []*SupplyTakeResult
-
-	// Get the contributions (i.e. supplies delivered) of each supply pile
 	SupplyPileContribMap() map[string]int
-
-	// Get the contributions (i.e. supplies taked) of each supply taker.
 	SupplyTakerContribMap() map[string]int
+	Taken() []SupplyTakeResult
 }
 
 type supplyPileGroup struct {
-	supplyPiles  []SupplyPile
-	taken        []*SupplyTakeResult
-	takeResultCh chan *SupplyTakeResult
+	mutex       sync.RWMutex
+	supplyPiles []FSupplyPile
+	taken       []SupplyTakeResult
 }
 
 func (spg *supplyPileGroup) Supply(taker SupplyTaker) {
@@ -24,76 +24,68 @@ func (spg *supplyPileGroup) Supply(taker SupplyTaker) {
 	}
 }
 
-func (spg *supplyPileGroup) Taken() []*SupplyTakeResult {
-	return spg.taken
-}
-
 func (spg *supplyPileGroup) SupplyPileContribMap() map[string]int {
-	allTaken := spg.taken
+	spg.mutex.RLock()
+	taken := spg.taken
+	spg.mutex.RUnlock()
+
 	contributorMap := make(map[string]int, 0)
 
-	for _, taken := range allTaken {
-		id := taken.PileID
-		contributorMap[id] = contributorMap[id] + len(taken.SupplyIds)
+	for _, taken := range taken {
+		id := taken.PileID()
+		contributorMap[id] = contributorMap[id] + len(taken.SupplyIDs())
 	}
 
 	return contributorMap
 }
 
 func (spg *supplyPileGroup) SupplyTakerContribMap() map[string]int {
-	allTaken := spg.taken
+	spg.mutex.RLock()
+	taken := spg.taken
+	spg.mutex.RUnlock()
+
 	contributorMap := make(map[string]int, 0)
 
-	for _, taken := range allTaken {
-		id := taken.TakerID
-		contributorMap[id] = contributorMap[id] + len(taken.SupplyIds)
+	for _, taken := range taken {
+		id := taken.TakerID()
+		contributorMap[id] = contributorMap[id] + len(taken.SupplyIDs())
 	}
 
 	return contributorMap
 }
 
-func (spg *supplyPileGroup) TakeResultChannel() <-chan *SupplyTakeResult {
-	return spg.takeResultCh
+func (spg *supplyPileGroup) Taken() []SupplyTakeResult {
+	spg.mutex.RLock()
+	defer spg.mutex.RUnlock()
+	return spg.taken
 }
 
 // Loop supply to store available piles and take results.
 func (spg *supplyPileGroup) loopSupply() {
-	updateTaken := make(chan *SupplyTakeResult)
-
 	for _, pile := range spg.supplyPiles {
-		go func(pile SupplyPile) {
-			takenResult := pile.TakeResultChannel()
-
+		go func(pile FSupplyPile) {
 			for {
-				select {
-				case result := <-takenResult:
-					go func() {
-						updateTaken <- result
-					}()
+				result, ok := <-pile.TakeResultChannel()
+
+				if ok {
+					// Note that this mutex is only used to modify the result map, since
+					// said map will be accessible via a getter method.
+					spg.mutex.Lock()
+					spg.taken = append(spg.taken, result)
+					spg.mutex.Unlock()
+				} else {
+					return
 				}
 			}
 		}(pile)
 	}
-
-	go func() {
-		for {
-			select {
-			case taken := <-updateTaken:
-				spg.taken = append(spg.taken, taken)
-
-				go func() {
-					spg.takeResultCh <- taken
-				}()
-			}
-		}
-	}()
 }
 
 // NewSupplyPileGroup creates a new SupplyPileGroup from a number of SupplyPiles.
-func NewSupplyPileGroup(piles ...SupplyPile) SupplyPileGroup {
+func NewSupplyPileGroup(piles ...FSupplyPile) SupplyPileGroup {
 	group := &supplyPileGroup{
 		supplyPiles: piles,
-		taken:       make([]*SupplyTakeResult, 0),
+		taken:       make([]SupplyTakeResult, 0),
 	}
 
 	go group.loopSupply()

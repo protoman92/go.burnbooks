@@ -16,7 +16,6 @@ type GopherParams struct {
 	BurnableProviderRawParams
 	SupplyTakerRawParams
 	Logger       Logger
-	TakeTimeout  time.Duration
 	TripDuration time.Duration
 }
 
@@ -24,10 +23,8 @@ type gopher struct {
 	BurnableProvider
 	SupplyTaker
 	GopherParams
-	bpConsumerReadyCh chan interface{}
-	bpProvideCh       chan []Burnable
-	stLoadCh          chan []Suppliable
-	stTakeReadyCh     chan interface{}
+	receiveSupplyCh chan []Suppliable
+	sendBurnableCh  chan []Burnable
 }
 
 func (g *gopher) String() string {
@@ -36,66 +33,27 @@ func (g *gopher) String() string {
 
 func (g *gopher) loopWork() {
 	logger := g.Logger
-	resetSequenceCh := make(chan interface{}, 1)
-	takeReadyCh := g.stTakeReadyCh
+	receiveSupplyCh := g.receiveSupplyCh
 	var burnables []Burnable
-	var burnableProvideCh chan []Burnable
-	var consumeReadyCh chan interface{}
-	var supplyLoadCh chan []Suppliable
-	var takeTimeoutCh <-chan time.Time
+	var sendBurnableCh chan []Burnable
 
 	for {
-		// The sequence of work is as follows:
-		// - Firstly, signal that this gopher is ready to take some supplies, then
-		// immediately set the take ready channel to nil to discard it in the next
-		// loop. Initialize the supply load to start receiving supplies, and the
-		// timeout channel to reset the process if no supplies arrive on time.
-		// - When supplies arrive, nullify the supply load channel. Extract the
-		// Burnables from said supplies, then sleep for a while to simulate trip
-		// duration. Afterwards, initialize the provide channel to feed Burnables
-		// downstream.
-		// - Alternatively, if the supply did not arrive on time, hit the time out
-		// and send a reset request.
-		// - Once the Burnables have been fed downstream, nullify the Burnables
-		// and provide channel and initialize the consume ready channel to wait
-		// for availability signal.
-		// - Once availability signal is retrieved, nullify the consume ready and
-		// send a reset signal.
-		// - Finally, reinstate the take ready channel to wait for the next batch.
-		//
+		// Note that the logic in the gopher is quite simple. This is because the
+		// heavy lifting has been delegated to the taker and provider. As a result
+		// the gopher is only responsible for transfering resources from the receive
+		// channel to the send channel and simulating travel time.
 		select {
-		case takeReadyCh <- true:
-			takeReadyCh = nil
-			supplyLoadCh = g.stLoadCh
-			takeTimeoutCh = time.After(g.TakeTimeout)
-
-		// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-		case supplies := <-supplyLoadCh:
+		case supplies := <-receiveSupplyCh:
 			logger.Printf("%v received %d supplies", g, len(supplies))
-			supplyLoadCh = nil
-			takeTimeoutCh = nil
+			receiveSupplyCh = nil
 			burnables = ExtractBurnablesFromSuppliables(supplies...)
+			sendBurnableCh = g.sendBurnableCh
 			time.Sleep(g.TripDuration)
-			burnableProvideCh = g.bpProvideCh
 
-		case <-takeTimeoutCh:
-			logger.Printf("%v timed out!", g)
-			takeTimeoutCh = nil
-			supplyLoadCh = nil
-			resetSequenceCh <- true
-		// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-
-		case burnableProvideCh <- burnables:
-			burnableProvideCh = nil
+		case sendBurnableCh <- burnables:
+			sendBurnableCh = nil
 			burnables = nil
-			consumeReadyCh = g.bpConsumerReadyCh
-
-		case <-consumeReadyCh:
-			consumeReadyCh = nil
-			resetSequenceCh <- true
-
-		case <-resetSequenceCh:
-			takeReadyCh = g.stTakeReadyCh
+			receiveSupplyCh = g.receiveSupplyCh
 		}
 	}
 }
@@ -104,27 +62,23 @@ func (g *gopher) loopWork() {
 func NewGopher(params *GopherParams) Gopher {
 	bpRawParams := params.BurnableProviderRawParams
 	stRawParams := params.SupplyTakerRawParams
-	bpConsumeReadyCh := make(chan interface{})
-	bpProvideCh := make(chan []Burnable)
-	stLoadCh := make(chan []Suppliable)
-	stTakeReadyCh := make(chan interface{})
+	receiveSupplyCh := make(chan []Suppliable)
+	sendBurnablesCh := make(chan []Burnable)
 
 	gp := &gopher{
 		BurnableProvider: NewBurnableProvider(&BurnableProviderParams{
 			BurnableProviderRawParams: bpRawParams,
-			ConsumeReadyCh:            bpConsumeReadyCh,
-			ProvideCh:                 bpProvideCh,
+			BPLogger:                  params.Logger,
+			ReceiveBurnableSourceCh:   sendBurnablesCh,
 		}),
 		SupplyTaker: NewSupplyTaker(&SupplyTakerParams{
+			SendSupplyDestCh:     receiveSupplyCh,
 			SupplyTakerRawParams: stRawParams,
-			LoadCh:               stLoadCh,
-			TakeReadyCh:          stTakeReadyCh,
+			STLogger:             params.Logger,
 		}),
-		GopherParams:      *params,
-		bpConsumerReadyCh: bpConsumeReadyCh,
-		bpProvideCh:       bpProvideCh,
-		stLoadCh:          stLoadCh,
-		stTakeReadyCh:     stTakeReadyCh,
+		GopherParams:    *params,
+		receiveSupplyCh: receiveSupplyCh,
+		sendBurnableCh:  sendBurnablesCh,
 	}
 
 	go gp.loopWork()

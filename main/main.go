@@ -11,23 +11,23 @@ import (
 
 const (
 	gopherCount        = 10
-	gopherCapacity     = 23
-	gopherTakeTimeout  = time.Duration(1e5)
+	gopherCapacity     = 19
+	gopherTakeTimeout  = time.Duration(1e9)
 	incineratorCap     = 20
 	incineratorMinCap  = incineratorCap / 2
 	incineratorCount   = 6
-	maxBurnDuration    = time.Duration(10e9)
-	minBurnDuration    = time.Duration(1e9)
-	maxTripDelay       = time.Duration(3e9)
-	minTripDelay       = time.Duration(1e9)
+	maxBurnDuration    = time.Duration(10e5)
+	minBurnDuration    = time.Duration(1e5)
+	maxTripDelay       = time.Duration(3e5)
+	minTripDelay       = time.Duration(1e5)
 	supplyPerPileCount = 1000
 	supplyPileCount    = 5
-	supplyPileTimeout  = time.Duration(1e5)
+	supplyPileTimeout  = time.Duration(1e9)
 	totalSupplyCount   = supplyPileCount * supplyPerPileCount
 )
 
 var (
-	logger = gbb.NewLogger(false)
+	logger = gbb.NewLogger(true)
 )
 
 func randomDuration(min time.Duration, max time.Duration) time.Duration {
@@ -43,11 +43,11 @@ func main() {
 				BPID: strconv.Itoa(ix),
 			},
 			SupplyTakerRawParams: gbb.SupplyTakerRawParams{
-				Cap:  gopherCapacity,
-				STID: strconv.Itoa(ix),
+				Cap:         gopherCapacity,
+				STID:        strconv.Itoa(ix),
+				TakeTimeout: gopherTakeTimeout,
 			},
 			Logger:       logger,
-			TakeTimeout:  gopherTakeTimeout,
 			TripDuration: randomDuration(minTripDelay, maxTripDelay),
 		}
 
@@ -55,7 +55,7 @@ func main() {
 		gophers[ix] = gopher
 	}
 
-	piles := make([]gbb.SupplyPile, supplyPileCount)
+	piles := make([]gbb.FSupplyPile, supplyPileCount)
 	allBooks := make([]gbb.Book, 0)
 	allBookIds := make([]string, 0)
 
@@ -85,7 +85,7 @@ func main() {
 
 	pileGroup := gbb.NewSupplyPileGroup(piles...)
 
-	incinerators := make([]gbb.Incinerator, incineratorCount)
+	incinerators := make([]gbb.FIncinerator, incineratorCount)
 
 	for ix := range incinerators {
 		iParams := &gbb.IncineratorParams{
@@ -99,7 +99,12 @@ func main() {
 		incinerators[ix] = incinerator
 	}
 
-	incineratorGroup := gbb.NewIncineratorGroup(incinerators...)
+	igParams := gbb.IncineratorGroupParams{
+		BurnResultCapacity: 0,
+		Incinerators:       incinerators,
+	}
+
+	incineratorGroup := gbb.NewIncineratorGroup(&igParams)
 
 	// Start the system
 	for _, gopher := range gophers {
@@ -113,7 +118,7 @@ func main() {
 	go func() {
 		burnResultCh := incineratorGroup.BurnResultChannel()
 		var initLastBurned bool
-		var lastBurned *gbb.BurnResult
+		var lastBurned gbb.BurnResult
 
 		for {
 			select {

@@ -2,13 +2,19 @@ package goburnbooks
 
 import (
 	"fmt"
+	"sync"
 )
 
 // Incinerator represents something that can burn a Burnable.
 type Incinerator interface {
-	BurnResultChannel() <-chan *BurnResult
+	BurnResultChannel() <-chan BurnResult
 	Consume(provider BurnableProvider)
 	UID() string
+}
+
+// FIncinerator represents an incinerator that has all functionalities.
+type FIncinerator interface {
+	Incinerator
 }
 
 // IncineratorParams represents the required parameters to set up an incinerator.
@@ -22,28 +28,32 @@ type IncineratorParams struct {
 	MinCapacity uint
 }
 
+// The consume ready channel is here to coordinate access to the incinerator
+// by allowing only one provider to provide burnables at any time. Thus, it has
+// a buffer of 1.
 type incinerator struct {
 	IncineratorParams
-	burnResult chan *BurnResult
+	burnResultCh chan BurnResult
 }
 
 func (i *incinerator) String() string {
 	return fmt.Sprintf("Incinerator %s", i.ID)
 }
 
-func (i *incinerator) BurnResultChannel() <-chan *BurnResult {
-	return i.burnResult
+func (i *incinerator) BurnResultChannel() <-chan BurnResult {
+	return i.burnResultCh
 }
 
 func (i *incinerator) Consume(provider BurnableProvider) {
 	go func() {
 		capacity := i.Capacity
+		burnResult := i.burnResultCh
 		burning := make(chan interface{}, capacity)
-		burnResult := i.burnResult
 		logger := i.Logger
 		providerID := provider.BurnableProviderID()
-		var provideCh = provider.ProvideChannel()
-		var readyCh chan<- interface{}
+		provideReadyCh := provider.ReceiveProvideReadyChannel()
+		resetSequenceCh := make(chan interface{}, 1)
+		var provideCh <-chan []Burnable
 
 		// Initialize this channel every time a new batch of Burnables is received.
 		// Emissions from this channel means that enough items from a batch have
@@ -60,24 +70,44 @@ func (i *incinerator) Consume(provider BurnableProvider) {
 
 		for {
 			select {
+			case provideReadyCh <- i.ID:
+				logger.Printf("%v is ready to consume from %v", i, provider)
+				provideReadyCh = nil
+				provideCh = provider.SendBurnablesChannel()
+
 			case burnables := <-provideCh:
 				// Nullify the provide channel to let the sequence run in peace.
-				logger.Printf("%v received %d burnables", i, len(burnables))
+				logger.Printf("%v received %d from %v", i, len(burnables), provider)
 				provideCh = nil
-				addProcessed := make(chan interface{})
 				batchCount := uint(len(burnables))
 				enoughProcessedCh = make(chan interface{}, 1)
-				processedCount := uint(0)
 
 				if batchCount == 0 {
 					enoughProcessedCh <- true
 					break
 				}
 
+				addProcessed := make(chan interface{})
+				processedCount := uint(0)
+
+				var mutex sync.RWMutex
+
+				accessAddProcessed := func() chan interface{} {
+					mutex.RLock()
+					defer mutex.RUnlock()
+					return addProcessed
+				}
+
+				nullifyAddProcessed := func() {
+					mutex.Lock()
+					defer mutex.Unlock()
+					addProcessed = nil
+				}
+
 				go func() {
 					for {
 						select {
-						case <-addProcessed:
+						case <-accessAddProcessed():
 							processedCount++
 
 							// Once we have processed enough items in a batch, send a signal
@@ -85,8 +115,8 @@ func (i *incinerator) Consume(provider BurnableProvider) {
 							// reinitialize the provide channel in order to receive the next
 							// batch.
 							if batchCount-processedCount < i.MinCapacity {
-								addProcessed = nil
 								enoughProcessedCh <- true
+								nullifyAddProcessed()
 							}
 						}
 					}
@@ -101,35 +131,23 @@ func (i *incinerator) Consume(provider BurnableProvider) {
 						<-burning
 
 						go func() {
-							// This is in a goroutine because this channel could be nullified
-							// halfway after enough items have been processed to prevent
-							// duplicate signals.
-							addProcessed <- true
+							if addProcessed := accessAddProcessed(); addProcessed != nil {
+								addProcessed <- true
+							}
 						}()
 
-						result := &BurnResult{
-							Burned:        burnable,
-							IncineratorID: i.ID,
-							ProviderID:    providerID,
-						}
-
+						result := NewBurnResult(burnable, i.ID, providerID)
 						burnResult <- result
 					}(burnable)
 				}
 
 			case <-enoughProcessedCh:
-				logger.Printf("%v has burned enough, signalling ready", i)
+				logger.Printf("%v has burned enough, signalling ready to %v", i, provider)
 				enoughProcessedCh = nil
+				resetSequenceCh <- true
 
-				// We must ensure that the ready channel is constantly drained to
-				// prevent it from blocking progress.
-				readyCh = provider.ConsumeReadyChannel()
-
-			case readyCh <- true:
-				readyCh = nil
-
-				// Reinstate the provide channel to receive more requests.
-				provideCh = provider.ProvideChannel()
+			case <-resetSequenceCh:
+				provideReadyCh = provider.ReceiveProvideReadyChannel()
 			}
 		}
 	}()
@@ -142,10 +160,10 @@ func (i *incinerator) UID() string {
 // NewIncinerator creates a new incinerator with a specified pending channel
 // and capacity. The capacity determines how many Burnables can be burned at any
 // given point in time.
-func NewIncinerator(params *IncineratorParams) Incinerator {
+func NewIncinerator(params *IncineratorParams) FIncinerator {
 	i := &incinerator{
 		IncineratorParams: *params,
-		burnResult:        make(chan *BurnResult),
+		burnResultCh:      make(chan BurnResult),
 	}
 
 	if i.Capacity < i.MinCapacity {

@@ -1,8 +1,6 @@
 package goburnbooks
 
 import (
-	"fmt"
-	"strconv"
 	"testing"
 	"time"
 )
@@ -10,89 +8,25 @@ import (
 func Test_GopherDeliveringBurnables_ShouldBurnAll(t *testing.T) {
 	/// Setup
 	t.Parallel()
-	gophers := make([]Gopher, gopherCount)
-
-	for ix := range gophers {
-		gParams := GopherParams{
-			BurnableProviderRawParams: BurnableProviderRawParams{
-				BPID: strconv.Itoa(ix),
-			},
-			SupplyTakerRawParams: SupplyTakerRawParams{
-				Cap:  gopherCapacity,
-				STID: strconv.Itoa(ix),
-			},
-			Logger:       logWorker,
-			TakeTimeout:  gopherTakeTimeout,
-			TripDuration: tripDelay,
-		}
-
-		gopher := NewGopher(&gParams)
-		gophers[ix] = gopher
-	}
-
-	burnDuration := time.Duration(1)
-	piles := make([]SupplyPile, supplyPileCount)
-	allBooks := make([]Book, 0)
-	allBookIds := make([]string, 0)
-
-	for ix := range piles {
-		supplies := make([]Suppliable, supplyPerPileCount)
-
-		for jx := range supplies {
-			id := fmt.Sprintf("%d-%d", ix, jx)
-			bParams := BookParams{BurnDuration: burnDuration, ID: id}
-			book := NewBook(&bParams)
-			supplies[jx] = book
-			allBooks = append(allBooks, book)
-			allBookIds = append(allBookIds, id)
-		}
-
-		pParams := SupplyPileParams{
-			Logger:             logWorker,
-			Supply:             supplies,
-			ID:                 strconv.Itoa(ix),
-			TakeResultCapacity: 0,
-			TakeTimeout:        supplyPileTimeout,
-		}
-
-		pile := NewSupplyPile(&pParams)
-		piles[ix] = pile
-	}
-
-	pileGroup := NewSupplyPileGroup(piles...)
-
-	incinerators := make([]Incinerator, incineratorCount)
-
-	for ix := range incinerators {
-		iParams := IncineratorParams{
-			Capacity:    incineratorCap,
-			ID:          strconv.Itoa(ix),
-			Logger:      logWorker,
-			MinCapacity: incineratorMinCap,
-		}
-
-		incinerator := NewIncinerator(&iParams)
-		incinerators[ix] = incinerator
-	}
-
-	incineratorGroup := NewIncineratorGroup(incinerators...)
-	totalBookCount := len(allBookIds)
+	suite := NewDefaultTestSuite()
 
 	/// When
-	for _, gopher := range gophers {
-		go pileGroup.Supply(gopher)
-		go incineratorGroup.Consume(gopher)
-	}
-
-	time.Sleep(integrationWaitDuration)
+	players := suite.SetUpSystem()
+	time.Sleep(suite.integrationWaitDuration)
 
 	/// Then
+	pileGroup := players.supplyPileGroup
+	contribPercentThreshold := suite.contribPercentThreshold
+	gopherCount := int(players.GopherCount())
+	incineratorCount := int(players.IncineratorCount())
+	incineratorGroup := players.incineratorGroup
+	totalBookCount := int(players.BookCount())
+	totalSupplyCount := int(suite.TotalSupplyCount())
 	verifySupplyGroupFairContrib(pileGroup, contribPercentThreshold, t)
 	verifyIncGroupFairContrib(incineratorGroup, contribPercentThreshold, t)
-	allBookIDLen := len(allBookIds)
 
-	if allBookIDLen != totalSupplyCount {
-		t.Errorf("Should have %d books, but got %d", totalSupplyCount, allBookIDLen)
+	if totalBookCount != totalSupplyCount {
+		t.Errorf("Should have %d books, but got %d", totalSupplyCount, totalBookCount)
 	}
 
 	allBurned := incineratorGroup.Burned()
