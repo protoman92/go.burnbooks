@@ -1,5 +1,6 @@
 # goburnbooks
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/protoman92/goburnbooks)](https://goreportcard.com/report/github.com/protoman92/goburnbooks)
 [![Build Status](https://travis-ci.org/protoman92/goburnbooks.svg?branch=master)](https://travis-ci.org/protoman92/goburnbooks)
 [![Coverage Status](https://coveralls.io/repos/github/protoman92/goburnbooks/badge.svg?branch=master)](https://coveralls.io/github/protoman92/goburnbooks?branch=master)
 
